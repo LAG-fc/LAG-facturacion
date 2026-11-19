@@ -108,3 +108,6 @@ dialog textarea { width: 100%; background: #1b1d21; color: #eee; border: 1px sol
 }
 
 @media (pointer: coarse) { .kbd { display: none; } }
+
+.strip-box { padding: 8px; background: #1b1d21; }
+.strip-box img { width: 55%; max-width: 260px; display: block; margin: 6px auto 0; border: 1px solid #444; }

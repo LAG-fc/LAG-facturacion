@@ -1,4 +1,4 @@
-ESCÁNER DE REMITOS — PÁGINA WEB INSTALABLE (v4)
+ESCÁNER DE REMITOS — PÁGINA WEB INSTALABLE (v4.1)
 ================================================
 
 QUÉ ES
@@ -71,3 +71,22 @@ LO QUE HACE LA VERSIÓN 4
   lectura la endereza sola.
 - Lectura: solo mira la zona central. Cantidades = columna izquierda; productos = filas del medio.
   Firmas, notas y números de la derecha se ignoran. Funciona aunque no se lea el encabezado.
+
+------------------------------------------------
+NOVEDAD v4.1: LECTURA SOLO DE LA COLUMNA DE CANTIDADES
+------------------------------------------------
+- La página ubica las líneas del marco de la tabla, recorta SOLO la columna de cantidades (de la
+  fila 1 a la fila 19) y manda únicamente esa imagen a Cloud Vision (1 imagen = 1 lectura).
+- Cada cantidad se asigna al producto por el número de fila contado desde arriba:
+  fila 1 = primer producto de la lista, fila 2 = segundo, etc. (la fila 19 no tiene producto).
+- La lista de productos (⚙ Ajustes) es ahora el ORDEN de las filas. Se actualiza sola a la lista nueva
+  la primera vez que se abre esta versión.
+- Si la hoja está de costado o al revés, se endereza sola mirando dónde está la tabla.
+- En "✏ Datos" se ve la tira exacta que se envió a Google.
+
+CÓMO ACTUALIZAR EN GITHUB (si ya la publicaste)
+1. Entrá a tu repositorio > "Add file" > "Upload files".
+2. Arrastrá TODO el contenido de esta carpeta (hay un archivo NUEVO: layout.js; los demás reemplazan
+   a los anteriores con el mismo nombre; la carpeta icons también).
+3. "Commit changes". En 1–2 minutos se publica.
+4. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces para que tome la versión nueva.

@@ -92,21 +92,14 @@
       <button type="button" id="testKeyBtn" class="btn small">Probar clave</button>
       <span id="keyMsg" class="hint"></span>
     </div>
-    <label class="field">Productos impresos en el remito (uno por línea)
-      <textarea id="catalogInput" rows="7" spellcheck="false"></textarea>
+    <label class="field">Productos, en el mismo orden que las filas del remito (uno por línea, de arriba hacia abajo)
+      <textarea id="catalogInput" rows="9" spellcheck="false"></textarea>
     </label>
     <div class="row-inline">
       <button type="button" id="resetCatalog" class="btn small">Restaurar lista original</button>
     </div>
-    <p class="hint">Sirve para reconocer a qué producto corresponde cada cantidad. Si el remito suma un producto nuevo, agregalo acá.</p>
+    <p class="hint">La cantidad de la fila 1 se asigna al primer producto, la de la fila 2 al segundo, y así hasta la fila 19 (la última no trae producto). Si el remito cambia de orden o suma un producto, editá esta lista.</p>
     <label class="field check"><input type="checkbox" id="hiResChk"> Usar la foto de máxima resolución de la cámara (si está disponible)</label>
-    <label class="field">Dónde está la cantidad (solo para remitos sin columnas CANTIDAD | DETALLE)
-      <select id="qtyModeSelect">
-        <option value="primero">Primer número después del producto</option>
-        <option value="ultimo">Último número de la fila</option>
-      </select>
-    </label>
-    
     <label class="field">Exigencia de lectura
       <select id="sensSelect">
         <option value="estricta">Estricta (avisa ante cualquier duda)</option>
@@ -124,7 +117,13 @@
   <dialog id="editDialog" class="wide">
     <h3>Datos de la página <span id="editNum"></span></h3>
     <div class="edit-body">
-      <div class="edit-img"><img id="editImg" alt="Remito"></div>
+      <div class="edit-img">
+        <img id="editImg" alt="Remito">
+        <div id="editStripBox" class="strip-box" hidden>
+          <p class="hint">Esto es lo único que se envía a Google (columna de cantidades):</p>
+          <img id="editStrip" alt="Columna de cantidades">
+        </div>
+      </div>
       <div class="edit-table">
         <div class="erow ehead"><span></span><span>Producto</span><span>Cantidad</span><span></span></div>
         <div id="editRows" class="erows"></div>
@@ -139,6 +138,7 @@
   </dialog>
 
   <script src="crop.js"></script>
+  <script src="layout.js"></script>
   <script src="enhance.js"></script>
   <script src="ocr.js"></script>
   <script src="pdf.js"></script>

@@ -9,14 +9,15 @@
   const totalsTable = $("totalsTable"), totalsEmpty = $("totalsEmpty");
   const nameDialog = $("nameDialog"), nameForm = $("nameForm"), nameInput = $("nameInput"), cancelName = $("cancelName");
   const settingsDialog = $("settingsDialog"), keyInput = $("keyInput"), keyMsg = $("keyMsg");
-  const qtyModeSelect = $("qtyModeSelect"), sensSelect = $("sensSelect");
+  const sensSelect = $("sensSelect");
   const uploadBtn = $("uploadBtn"), fileInput = $("fileInput"), pagesPanel = $("pagesPanel");
   const catalogInput = $("catalogInput"), hiResChk = $("hiResChk");
+  const editStrip = $("editStrip"), editStripBox = $("editStripBox");
   const editDialog = $("editDialog"), editRowsEl = $("editRows"), editImg = $("editImg"), editNum = $("editNum"), editErr = $("editErr");
 
   const DEFAULTS = {
-    apiKey: "", qtyMode: "primero", sensitivity: "normal", autoCrop: true,
-    filterMode: "mejorado", hiRes: true, catalog: OCR.DEFAULT_CATALOG.join("\n")
+    apiKey: "", sensitivity: "normal", autoCrop: true,
+    filterMode: "mejorado", hiRes: true, catalog: OCR.DEFAULT_CATALOG.join("\n"), catalogVersion: 5
   };
   let settings = { ...DEFAULTS };
   let stream = null;
@@ -26,8 +27,12 @@
 
   // ---------- Ajustes (se guardan en el navegador) ----------
   function loadSettings() {
-    try { return Promise.resolve({ ...DEFAULTS, ...JSON.parse(localStorage.getItem("settings") || "{}") }); }
-    catch (e) { return Promise.resolve({ ...DEFAULTS }); }
+    try {
+      const st = { ...DEFAULTS, ...JSON.parse(localStorage.getItem("settings") || "{}") };
+      // La lista de productos ahora es el ORDEN de las filas: se actualiza una sola vez a la lista nueva.
+      if (st.catalogVersion !== DEFAULTS.catalogVersion) { st.catalog = DEFAULTS.catalog; st.catalogVersion = DEFAULTS.catalogVersion; }
+      return Promise.resolve(st);
+    } catch (e) { return Promise.resolve({ ...DEFAULTS }); }
   }
   function persistSettings() {
     try { localStorage.setItem("settings", JSON.stringify(settings)); } catch (e) { /* nada */ }
@@ -211,15 +216,65 @@
     return c;
   }
 
+  // Gira un canvas "deg" grados en sentido horario (0, 90, 180 o 270).
+  function rotateCanvas(src, deg) {
+    deg = ((deg % 360) + 360) % 360;
+    if (!deg) return src;
+    const c = document.createElement("canvas");
+    const swap = deg === 90 || deg === 270;
+    c.width = swap ? src.height : src.width; c.height = swap ? src.width : src.height;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate(deg * Math.PI / 180);
+    ctx.drawImage(src, -src.width / 2, -src.height / 2);
+    return c;
+  }
+
+  const imageDataOf = (c) => c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height);
+
+  // Busca la tabla en la hoja. Una hoja derecha tiene la columna de cantidades a la izquierda; si la
+  // hoja está de costado o al revés, se prueban los giros posibles y gana el que muestra la tabla bien.
+  function bestOrientation(enh) {
+    const portrait = enh.height >= enh.width;
+    const options = portrait ? [0, 180] : [90, 270];
+    let best = null;
+    for (const deg of options) {
+      const r = Layout.findTable(imageDataOf(rotateCanvas(enh, deg)));
+      const score = r.ok ? r.score : -1;
+      if (!best || score > best.score + 1e-9) best = { deg, score, table: r };
+    }
+    return best;
+  }
+
+  // Recorta SOLO la columna de cantidades (a máxima resolución) y la deja lista para leer.
+  async function makeStrip(table, srcCanvas, quadForSrc) {
+    let strip;
+    if (quadForSrc) {
+      const src = imageDataOf(srcCanvas);
+      strip = canvasFromImageData(Crop.warp(src, Crop.subQuad(quadForSrc, table), 2600, { noSnap: true }));
+    } else {
+      const sx = Math.round(table.x0 * srcCanvas.width), sy = Math.round(table.y0 * srcCanvas.height);
+      const sw = Math.max(8, Math.round((table.x1 - table.x0) * srcCanvas.width));
+      const sh = Math.max(8, Math.round((table.y1 - table.y0) * srcCanvas.height));
+      strip = document.createElement("canvas");
+      strip.width = sw; strip.height = sh;
+      strip.getContext("2d").drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+    }
+    const ctx = strip.getContext("2d", { willReadFrequently: true });
+    const d = ctx.getImageData(0, 0, strip.width, strip.height);
+    Enhance.enhance(d);
+    ctx.putImageData(d, 0, 0);
+    return toBlob(strip, 0.92);
+  }
+
   // Recorta el papel, mejora la imagen y la agrega como una página nueva.
   async function addPageFromCanvas(source) {
     const full = fitCanvas(source, START_SIDE);
-    let work, note = "";
+    let work, note = "", quad = null;
     if (autoCropChk.checked) {
-      const quad = detectQuad(full, full.width, full.height);
+      quad = detectQuad(full, full.width, full.height);
       if (quad) {
-        const src = full.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, full.width, full.height);
-        work = canvasFromImageData(Crop.warp(src, quad, MAX_SIDE));
+        work = canvasFromImageData(Crop.warp(imageDataOf(full), quad, MAX_SIDE));
       } else {
         work = fitCanvas(full, MAX_SIDE);
         note = " · sin recorte (no se distinguió el borde del papel)";
@@ -228,12 +283,22 @@
       work = fitCanvas(full, MAX_SIDE);
     }
 
-    // "Color mejorado": se usa para leer el texto y es la imagen del PDF en el modo por defecto.
-    const enh = cloneCanvas(work);
+    // "Color mejorado": es la imagen del PDF en el modo por defecto y sirve para ubicar la tabla.
+    let enh = cloneCanvas(work);
     const ectx = enh.getContext("2d", { willReadFrequently: true });
     const imgData = ectx.getImageData(0, 0, enh.width, enh.height);
     Enhance.enhance(imgData);
     ectx.putImageData(imgData, 0, 0);
+
+    // Orientación según la tabla y recuadro de la columna de cantidades
+    const o = bestOrientation(enh);
+    if (o.deg) { work = rotateCanvas(work, o.deg); enh = rotateCanvas(enh, o.deg); }
+    const table = o.table;
+    let stripBlob = null;
+    try {
+      stripBlob = await makeStrip(table, o.deg ? rotateCanvas(full, o.deg) : full, quad ? Crop.rotateQuad(quad, o.deg / 90) : null);
+    } catch (e) { console.error("No se pudo recortar la columna de cantidades:", e); }
+    if (!table.ok) note += " · no se encontró la tabla: revisá las cantidades (⚠)";
     const ocrBlob = await toBlob(enh, 0.92);
 
     let blob = ocrBlob;
@@ -247,7 +312,8 @@
     }
 
     const page = {
-      id: nextPageId++, blob, ocrBlob, w: work.width, h: work.height,
+      id: nextPageId++, blob, ocrBlob, stripBlob, stripUrl: stripBlob ? URL.createObjectURL(stripBlob) : "",
+      layoutOk: table.ok, w: work.width, h: work.height,
       url: URL.createObjectURL(blob), status: "reading", rows: [], runId: 0
     };
     pages.push(page);
@@ -410,22 +476,19 @@
   async function runOcr(page) {
     const myRun = ++page.runId;
     page.rows = [];
-    if (!settings.apiKey) { page.status = "alert"; render(); return; }
+    if (!settings.apiKey || !page.stripBlob) { page.status = "alert"; render(); return; }
     page.status = "reading";
     render();
     await ocrAcquire();
     try {
       if (page.runId !== myRun || !pages.includes(page) || page.status === "manual") return;
-      const resp = await OCR.recognize(page.ocrBlob, settings.apiKey);
+      // A Cloud Vision solo se le manda la columna de cantidades (1 imagen = 1 lectura facturable).
+      const resp = await OCR.recognize(page.stripBlob, settings.apiKey);
       if (page.runId !== myRun || !pages.includes(page) || page.status === "manual") return;
-      const { words, width, rotation } = OCR.extractWords(resp);
-      if (rotation) {
-        // la foto estaba de costado o al revés: se endereza la imagen (ya se corrigieron las posiciones)
-        await rotatePageBy(page, rotation);
-        if (page.runId !== myRun || !pages.includes(page)) return;
-      }
-      const { rows } = OCR.buildRows(words, {
-        width, qtyMode: settings.qtyMode, minConf: OCR.minConfFor(settings.sensitivity), catalog: catalogList()
+      const { words, height } = OCR.extractWords(resp, { autoRotate: false });
+      const { rows } = OCR.buildRowsStrip(words, {
+        height: height || page.stripH, products: catalogList(), minConf: OCR.minConfFor(settings.sensitivity),
+        layoutOk: page.layoutOk
       });
       page.rows = rows;
       page.status = rows.length && !rows.some((r) => r.low) ? "ok" : "alert";
@@ -462,6 +525,7 @@
       if (alertBtn) alertBtn.addEventListener("click", () => openEditor(p));
       card.querySelector(".del").addEventListener("click", () => {
         URL.revokeObjectURL(p.url);
+        if (p.stripUrl) URL.revokeObjectURL(p.stripUrl);
         pages.splice(pages.indexOf(p), 1);
         render();
       });
@@ -518,8 +582,21 @@
 
   async function rotatePage(p) {
     await rotatePageBy(p, 270);   // 270 = girar 90° a la derecha
+    // Con la hoja girada se vuelve a ubicar la tabla (sobre la imagen de la página) y se vuelve a leer.
+    try {
+      const bmp = await createImageBitmap(p.ocrBlob);
+      const c = document.createElement("canvas");
+      c.width = bmp.width; c.height = bmp.height;
+      c.getContext("2d").drawImage(bmp, 0, 0);
+      if (bmp.close) bmp.close();
+      const table = Layout.findTable(imageDataOf(c));
+      p.layoutOk = table.ok;
+      if (p.stripUrl) URL.revokeObjectURL(p.stripUrl);
+      p.stripBlob = await makeStrip(table, c, null);
+      p.stripUrl = URL.createObjectURL(p.stripBlob);
+    } catch (e) { console.error("No se pudo recortar la columna de cantidades:", e); }
     if (p.status === "manual") render();
-    else runOcr(p);   // con la hoja girada se vuelve a leer
+    else runOcr(p);
   }
 
   clearBtn.addEventListener("click", () => {
@@ -545,6 +622,8 @@
     if (!editRows.length) editRows.push({ name: "", qtyText: "", low: false });
     editNum.textContent = String(pages.indexOf(page) + 1);
     editImg.src = page.url;
+    editStrip.src = page.stripUrl || "";
+    editStripBox.hidden = !page.stripUrl;
     editErr.textContent = "";
     renderEditRows();
     editDialog.showModal();
@@ -608,7 +687,6 @@
   // ---------- Ajustes ----------
   settingsBtn.addEventListener("click", () => {
     keyInput.value = settings.apiKey;
-    qtyModeSelect.value = settings.qtyMode;
     sensSelect.value = settings.sensitivity;
     catalogInput.value = settings.catalog;
     hiResChk.checked = !!settings.hiRes;
@@ -618,7 +696,6 @@
   $("cancelSettings").addEventListener("click", () => settingsDialog.close());
   $("saveSettings").addEventListener("click", () => {
     settings.apiKey = keyInput.value.trim();
-    settings.qtyMode = qtyModeSelect.value;
     settings.sensitivity = sensSelect.value;
     settings.catalog = catalogInput.value;
     settings.hiRes = hiResChk.checked;

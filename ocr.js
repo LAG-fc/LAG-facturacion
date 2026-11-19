@@ -154,8 +154,9 @@
     "PAN MIGNON BLANCO", "PAN MIGNON DE SALVADO", "PAN FRANCES", "PAN MIGNON BLANCO SIN SAL",
     "PAN DE SALVADO SIN SAL", "FIGACITAS DE MANTECA", "LIBRITOS DE GRASA", "BIZCOCHUELO DE VAINILLA 50 X 80",
     "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE",
-    "SANWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
+    "SANDWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
   ];
+  const TABLE_ROWS = 19;   // la tabla del remito tiene 19 filas (la última no trae producto impreso)
 
   function levenshtein(a, b) {
     if (a === b) return 0;
@@ -289,6 +290,70 @@
     }
     rows.sort((a, b) => a.cy - b.cy);
     return { rows: rows.map((r) => r.row), headerFound: true, layout: "columnas" };
+  }
+
+  // ---------- Lectura de la columna de cantidades (recuadro recortado) ----------
+  // La imagen que se manda a Vision es SOLO la columna de cantidades, de la primera a la última fila de
+  // la tabla. Cada cantidad se asigna al producto por el número de fila (de arriba hacia abajo).
+  // words: salida de extractWords(resp, {autoRotate:false}); o.height: alto de la imagen leída.
+  function buildRowsStrip(words, o) {
+    o = o || {};
+    const products = (o.products || []).map((p) => String(p).trim()).filter(Boolean);
+    const N = Math.max(o.rowCount || TABLE_ROWS, products.length);
+    const height = o.height || Math.max(1, ...words.map((w) => w.y1));
+    const minConf = o.minConf === undefined ? 0.8 : o.minConf;
+    const rowH = height / N;
+
+    // Palabras pegadas (por ejemplo "489," y "12") forman una sola cantidad
+    const ws = words.filter((w) => /[\p{N}]/u.test(w.text) || /^[A-Za-z|]{1,4}$/.test(w.text) || /[.,]/.test(w.text))
+      .map((w) => ({ ...w })).sort((a, b) => a.x0 - b.x0);
+    const hs = ws.map((w) => w.h).sort((a, b) => a - b);
+    const medH = hs[hs.length >> 1] || rowH * 0.5;
+    const groups = [];
+    for (const w of ws) {
+      let g = null;
+      for (const c of groups) {
+        const overlap = Math.min(w.y1, c.y1) - Math.max(w.y0, c.y0);
+        if (overlap >= 0.3 * Math.min(w.h, c.y1 - c.y0) && w.x0 - c.x1 <= medH * 2.2 && w.x1 >= c.x0 - medH) { g = c; break; }
+      }
+      if (g) { g.words.push(w); g.x1 = Math.max(g.x1, w.x1); g.y0 = Math.min(g.y0, w.y0); g.y1 = Math.max(g.y1, w.y1); }
+      else groups.push({ words: [w], x0: w.x0, x1: w.x1, y0: w.y0, y1: w.y1 });
+    }
+
+    const byRow = new Map();
+    for (const g of groups) {
+      const longest = g.words.reduce((a, b) => (b.text.length > a.text.length ? b : a));
+      const cy = longest.cy;
+      const idx = Math.min(N - 1, Math.max(0, Math.floor(cy / rowH)));
+      const top = idx * rowH, bottom = top + rowH;
+      const gh = Math.max(1, g.y1 - g.y0);
+      const spill = Math.max(0, bottom - g.y1 < 0 ? g.y1 - bottom : 0, g.y0 < top ? top - g.y0 : 0) / gh;
+      g.spill = spill;
+      g.tall = gh > rowH * 1.35;
+      if (!byRow.has(idx)) byRow.set(idx, []);
+      byRow.get(idx).push(g);
+    }
+
+    const rows = [];
+    for (const [idx, list] of [...byRow.entries()].sort((a, b) => a[0] - b[0])) {
+      const name = products[idx] || "";
+      const allWords = list.flatMap((g) => g.words).sort((a, b) => a.x0 - b.x0);
+      const text = allWords.map((w) => w.text).join(" ");
+      const hasDigit = /\d/.test(text);
+      const q = parseQtyCell(allWords);
+      const uncertain = list.length > 1 || list.some((g) => g.spill > 0.35 || g.tall) || o.layoutOk === false;
+      if (q) {
+        const row = makeRow(name, q.value, q.text, q.conf, "fila " + (idx + 1) + ": " + q.text, minConf);
+        if (q.low || uncertain) row.low = true;
+        row.index = idx + 1;
+        rows.push(row);
+      } else if (hasDigit) {
+        const row = makeRow(name, null, text, 0, "fila " + (idx + 1) + ": " + text, minConf);   // se vio algo, pero no se entiende
+        row.low = true; row.index = idx + 1;
+        rows.push(row);
+      }
+    }
+    return { rows, layout: "columna", rowCount: N };
   }
 
   // ---------- Lectura de la zona central (no depende de encabezados) ----------
@@ -533,7 +598,7 @@
   }
 
   const api = {
-    recognize, extractWords, buildRows, aggregate,
+    recognize, extractWords, buildRows, buildRowsStrip, aggregate, TABLE_ROWS,
     normalizeName, formatQty, parseManualQty, minConfFor, DEFAULT_CATALOG
   };
   if (typeof module === "object" && module.exports) module.exports = api;
