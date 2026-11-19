@@ -1,0 +1,73 @@
+ESCÁNER DE REMITOS — PÁGINA WEB INSTALABLE (v4)
+================================================
+
+QUÉ ES
+Es una página web (no una extensión). Se publica una vez en internet gratis, y desde ahí se abre
+en la PC o en el celular, y se puede "instalar" para que quede como una aplicación con su ícono.
+Las fotos y el PDF se procesan en tu propio dispositivo; solo la lectura de texto consulta a Google.
+
+IMPORTANTE ANTES DE EMPEZAR
+- La cámara solo funciona en páginas con https:// (todos los hostings de abajo lo dan solo).
+- Esta carpeta NO se abre con doble clic (la cámara y la instalación no funcionan desde archivos locales).
+  Hay que publicarla.
+
+------------------------------------------------
+OPCIÓN A (la más fácil): NETLIFY DROP
+------------------------------------------------
+1. Descomprimí el .zip. Queda una carpeta "escaner-remitos-web".
+2. Entrá a https://app.netlify.com/drop
+   (conviene crear antes una cuenta gratis en https://app.netlify.com/login con tu mail; si no,
+   la página queda con una contraseña temporal hasta que la "reclames" iniciando sesión).
+3. Arrastrá la carpeta (o el .zip) adentro del recuadro.
+4. Netlify te da una dirección que termina en .netlify.app. Esa es tu página.
+5. Para actualizar en el futuro: entrá al panel de tu proyecto, sección "Production deploys",
+   y arrastrá la carpeta nueva. Se reemplaza sola.
+
+------------------------------------------------
+OPCIÓN B (permanente y sin cuenta de empresa): GITHUB PAGES
+------------------------------------------------
+1. Creá una cuenta gratis en https://github.com
+2. Botón verde "New" > nombre del repositorio: remitos > marcá "Public" > "Create repository".
+3. En el repositorio: "uploading an existing file" > arrastrá TODO lo que hay ADENTRO de la carpeta
+   escaner-remitos-web (index.html, sw.js, icons, etc. — no la carpeta en sí) > "Commit changes".
+4. Settings > Pages > Source: "Deploy from a branch" > Branch: main, carpeta / (root) > Save.
+5. A los 1–2 minutos queda en https://TU-USUARIO.github.io/remitos/
+   (El repositorio público es visible para cualquiera: no subas nada más que esta carpeta.
+   Tu clave de Google NO está en los archivos: se escribe en la página y queda en tu navegador.)
+
+------------------------------------------------
+CLAVE DE GOOGLE (API key)
+------------------------------------------------
+- La clave se carga en la página: ⚙ Ajustes > pegar clave. Se guarda solo en ese navegador/celular.
+  En cada dispositivo (y si cambia la dirección de la página) hay que cargarla otra vez.
+- Costo de Google Cloud Vision: las primeras 1.000 lecturas por mes son gratis; después cuesta
+  USD 1,50 cada 1.000 (precio vigente al 19/11/2026). Cada foto = 1 lectura. Google pide tener la
+  facturación activada en el proyecto aunque no superes lo gratis.
+- RECOMENDADO — restringir la clave para que nadie más la pueda usar:
+  Google Cloud Console > APIs y servicios > Credenciales > tu clave >
+    * "Restricciones de la aplicación": Sitios web (referentes HTTP). Agregá, por ejemplo:
+        tu-sitio.netlify.app/*          (Netlify)
+        tu-usuario.github.io/*          (GitHub Pages)
+    * "Restricciones de la API": Restringir clave > Cloud Vision API.
+  Los cambios pueden tardar unos minutos en aplicarse.
+
+------------------------------------------------
+INSTALAR COMO APLICACIÓN
+------------------------------------------------
+- PC con Chrome o Edge: aparece el botón "⬇ Instalar" arriba (o el ícono de instalar en la barra de
+  direcciones).
+- Android (Chrome): botón "⬇ Instalar" o menú ⋮ > "Instalar aplicación".
+- iPhone/iPad: abrir la página en Safari > botón Compartir (cuadrado con flecha) >
+  "Añadir a pantalla de inicio" > "Añadir".
+- Cuando haya una versión nueva, se actualiza sola al abrir la aplicación con internet
+  (a veces hay que cerrarla y abrirla dos veces).
+
+------------------------------------------------
+LO QUE HACE LA VERSIÓN 4
+------------------------------------------------
+- Recorte automático: busca la hoja completa y siempre la deja como un rectángulo con la
+  proporción del remito (aunque la foto esté en perspectiva o un dedo tape una esquina).
+- Fotos subidas: respetan la orientación del celular y, si la hoja está de costado o al revés, la
+  lectura la endereza sola.
+- Lectura: solo mira la zona central. Cantidades = columna izquierda; productos = filas del medio.
+  Firmas, notas y números de la derecha se ignoran. Funciona aunque no se lea el encabezado.
