@@ -15,25 +15,45 @@
     });
   }
 
+  // Lee varias imágenes en UNA consulta (hasta 16). Cada imagen se factura como una lectura.
+  // Devuelve un arreglo de respuestas, una por imagen y en el mismo orden ({} o {error} si falló esa imagen).
+  async function recognizeBatch(blobs, apiKey, opts) {
+    opts = opts || {};
+    const out = [];
+    for (let i = 0; i < blobs.length; i += 16) {
+      const chunk = blobs.slice(i, i + 16);
+      const contents = await Promise.all(chunk.map(blobToBase64));
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), opts.timeoutMs || 45000);
+      let res;
+      try {
+        res = await fetch(VISION_URL + "?key=" + encodeURIComponent(apiKey), {
+          method: "POST", signal: ctl.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requests: contents.map((content) => ({
+              image: { content },
+              features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
+              imageContext: { languageHints: ["es"] }
+            }))
+          })
+        });
+      } catch (e) {
+        throw new Error(e && e.name === "AbortError" ? "La lectura tardó demasiado (revisá la conexión)." : (e && e.message) || "Sin conexión");
+      } finally { clearTimeout(timer); }
+      let json = {};
+      try { json = await res.json(); } catch (e) { /* sin cuerpo */ }
+      if (!res.ok) throw new Error((json.error && json.error.message) || ("Error HTTP " + res.status));
+      const rs = json.responses || [];
+      for (let k = 0; k < chunk.length; k++) out.push(rs[k] || {});
+    }
+    return out;
+  }
+
   async function recognize(blob, apiKey) {
-    const content = await blobToBase64(blob);
-    const res = await fetch(VISION_URL + "?key=" + encodeURIComponent(apiKey), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requests: [{
-          image: { content },
-          features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
-          imageContext: { languageHints: ["es"] }
-        }]
-      })
-    });
-    let json = {};
-    try { json = await res.json(); } catch (e) { /* sin cuerpo */ }
-    if (!res.ok) throw new Error((json.error && json.error.message) || ("Error HTTP " + res.status));
-    const r = json.responses && json.responses[0];
-    if (r && r.error) throw new Error(r.error.message || "Error de la API");
-    return r || {};
+    const r = await recognizeBatch([blob], apiKey);
+    if (r[0] && r[0].error) throw new Error(r[0].error.message || "Error de la API");
+    return r[0] || {};
   }
 
   // ---------- Palabras con posición y confianza ----------
@@ -79,7 +99,8 @@
           if (!text.trim()) continue;
           const v = ((wd.boundingBox && wd.boundingBox.vertices) || []).map((q) => ({ x: q.x || 0, y: q.y || 0 }));
           if (!v.length) continue;
-          raw.push({ text, v, conf: typeof wd.confidence === "number" ? wd.confidence : 0.5 });
+          const wc = typeof wd.confidence === "number" ? wd.confidence : 0.5;
+          raw.push({ text, v, conf: wc, sym: (wd.symbols || []).map((sy) => ({ t: sy.text || "", c: typeof sy.confidence === "number" ? sy.confidence : wc })) });
         }
       }
     }
@@ -94,7 +115,7 @@
       const xs = v.map((q) => q.x), ys = v.map((q) => q.y);
       const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
       words.push({
-        text: w.text, x0, x1, y0, y1,
+        text: w.text, x0, x1, y0, y1, sym: w.sym,
         cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, h: Math.max(1, y1 - y0), conf: w.conf
       });
     }
@@ -290,6 +311,117 @@
     }
     rows.sort((a, b) => a.cy - b.cy);
     return { rows: rows.map((r) => r.row), headerFound: true, layout: "columnas" };
+  }
+
+  // ---------- Lectura de UNA cantidad escrita a mano (con coma decimal) ----------
+  // Los errores típicos de Vision con la coma escrita a mano: la lee como punto, barra, punto y coma,
+  // la confunde con un 1 (queda "48912"), la pierde, o parte el número en dos palabras ("489," "12").
+  // Se normaliza todo a "489,12" y se marca como dudoso (⚠) lo que no es una lectura limpia.
+  const SEP_CLEAN = new Set([","]);
+  const SEP_SOFT = new Set(["."]);
+  const SEP_DIRTY = new Set([";", ":", "'", "’", "`", "´", "/", "\\", "|", "!", "‚", "،", "·", "ˌ"]);
+
+  function readQuantity(words, opts) {
+    opts = opts || {};
+    const dec = opts.decimals === undefined ? 2 : opts.decimals;
+    const ws = [...words].sort((a, b) => a.x0 - b.x0);
+    // lista de símbolos con su confianza
+    const syms = [];
+    for (const w of ws) {
+      if (w.sym && w.sym.length) for (const y of w.sym) for (const ch of String(y.t)) syms.push({ ch, c: y.c });
+      else for (const ch of w.text) syms.push({ ch, c: w.conf });
+      syms.push({ ch: " ", c: 1 });
+    }
+    let low = false, minDigitConf = 1, sepConf = 1;
+    // 1) cada símbolo -> dígito (D), separador (S) o espacio (_); lo demás se ignora
+    const toks = [];
+    for (const { ch, c } of syms) {
+      if (/\d/.test(ch)) { toks.push({ k: "D", ch, c }); minDigitConf = Math.min(minDigitConf, c); }
+      else if (SEP_CLEAN.has(ch)) toks.push({ k: "S", ch, c, kind: "clean" });
+      else if (SEP_SOFT.has(ch)) toks.push({ k: "S", ch, c, kind: "soft" });
+      else if (SEP_DIRTY.has(ch)) toks.push({ k: "S", ch, c, kind: "dirty" });
+      else if (/\s/.test(ch)) toks.push({ k: "_", ch, c });
+      else if (CONFUSABLE[ch] !== undefined && /[A-Za-z]/.test(ch)) { toks.push({ k: "D", ch: CONFUSABLE[ch], c: Math.min(c, 0.6) }); low = true; minDigitConf = Math.min(minDigitConf, c); }
+      // cualquier otro símbolo (rayas, subrayados) se ignora
+    }
+    // 2) grupos de dígitos separados por separadores (los espacios solo separan si no hay otro separador)
+    const hasSep = toks.some((t) => t.k === "S");
+    const groups = [], seps = [];
+    let cur = "";
+    for (const t of toks) {
+      if (t.k === "D") cur += t.ch;
+      else if (t.k === "S" || (t.k === "_" && !hasSep)) {
+        if (cur) { groups.push(cur); cur = ""; seps.push(t.k === "S" ? t : { kind: "space", c: 1 }); }
+        else if (t.k === "S" && groups.length) { seps[seps.length - 1] = seps[seps.length - 1].kind === "clean" ? seps[seps.length - 1] : t; }
+      }
+    }
+    if (cur) groups.push(cur);
+    if (!groups.length) return null;
+    while (seps.length && seps.length >= groups.length) seps.pop();      // separador al final: sobra
+    const firstTok = toks.find((t) => t.k !== "_");
+    if (firstTok && firstTok.k === "S") return { value: null, text: groups.join(","), low: true, conf: minDigitConf };   // ",12": falta la parte entera
+    const trailingSep = toks.length && (() => { let i = toks.length - 1; while (i >= 0 && toks[i].k === "_") i--; return i >= 0 && toks[i].k === "S"; })();
+    if (trailingSep) low = true;
+
+    let intPart, decPart = "";
+    if (groups.length === 1) {
+      const d = groups[0];
+      if (d.length > 6) return { value: null, text: d, low: true, conf: minDigitConf };
+      if (d.length >= 4) { intPart = d.slice(0, d.length - dec); decPart = d.slice(d.length - dec); low = true; }   // se perdió la coma
+      else intPart = d;
+    } else if (groups.length === 2) {
+      intPart = groups[0]; decPart = groups[1];
+      const s = seps[0];
+      if (s) {
+        if (s.kind === "clean") { sepConf = s.c; }
+        else if (s.kind === "soft") { sepConf = s.c; if (decPart.length > 2) low = true; }
+        else low = true;                                  // barra, punto y coma, espacio...: era una coma mal leída
+        if (s.c < 0.7) low = true;
+      } else low = true;
+      if (decPart.length === 3 && s && s.kind !== "clean") low = true;   // 1.250 puede ser mil doscientos cincuenta
+      if (dec && decPart.length !== dec) low = true;       // se esperaban 2 decimales (489,12)
+    } else {
+      // 1.250,50 · 1 250,50 · "4 89 12": se toma el último grupo como decimales
+      const last = seps[seps.length - 1];
+      intPart = groups.slice(0, -1).join(""); decPart = groups[groups.length - 1];
+      low = true;
+      if (!(last && last.kind === "clean") && decPart.length > 2) { intPart += decPart; decPart = ""; }
+    }
+    if (!intPart || intPart.length > 4 || decPart.length > 3) return { value: null, text: groups.join(","), low: true, conf: minDigitConf };
+    const value = parseFloat(intPart + (decPart ? "." + decPart : ""));
+    if (!isFinite(value) || value <= 0) return { value: null, text: groups.join(","), low: true, conf: minDigitConf };
+    const text = intPart + (decPart ? "," + decPart : "");
+    if (minDigitConf < 0.5) low = true;
+    return { value, text, low, conf: Math.min(minDigitConf, sepConf) };
+  }
+
+  // cells: [{index, words}] (index = número de fila, desde 1). Devuelve filas con el índice conservado.
+  function buildRowsFromCells(cells, o) {
+    o = o || {};
+    const products = (o.products || []).map((p) => String(p).trim()).filter(Boolean);
+    const minConf = o.minConf === undefined ? 0.8 : o.minConf;
+    const rows = [];
+    for (const cell of cells) {
+      const name = products[cell.index - 1] || "";
+      const raw = cell.words.map((w) => w.text).join(" ").trim();
+      if (cell.failed) {
+        const row = makeRow(name, null, "", 0, "fila " + cell.index + ": (no se pudo leer)", minConf);
+        row.low = true; row.index = cell.index; rows.push(row); continue;
+      }
+      const q = cell.words.length ? readQuantity(cell.words, { decimals: o.decimals }) : null;
+      let row;
+      if (q && q.value !== null) {
+        row = makeRow(name, q.value, q.text, q.conf, "fila " + cell.index + ": " + raw, minConf);
+        if (q.low || o.layoutOk === false || cell.straddle) row.low = true;
+      } else {
+        row = makeRow(name, null, q ? q.text : raw, 0, "fila " + cell.index + ": " + raw, minConf);
+        row.low = true;
+      }
+      row.index = cell.index;
+      rows.push(row);
+    }
+    rows.sort((a, b) => a.index - b.index);
+    return rows;
   }
 
   // ---------- Lectura de la columna de cantidades (recuadro recortado) ----------
@@ -598,7 +730,7 @@
   }
 
   const api = {
-    recognize, extractWords, buildRows, buildRowsStrip, aggregate, TABLE_ROWS,
+    recognize, recognizeBatch, extractWords, readQuantity, buildRowsFromCells, buildRows, buildRowsStrip, aggregate, TABLE_ROWS,
     normalizeName, formatQty, parseManualQty, minConfFor, DEFAULT_CATALOG
   };
   if (typeof module === "object" && module.exports) module.exports = api;

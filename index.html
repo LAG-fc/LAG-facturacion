@@ -41,6 +41,7 @@
       <div class="video-wrap" id="videoWrap">
         <video id="video" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
+        <div id="stepsBadge" class="steps-badge" hidden></div>
         <div id="flash"></div>
         <div id="cameraMsg" class="camera-msg">Iniciando cámara…</div>
       </div>
@@ -68,6 +69,15 @@
       <button id="saveBtn" class="btn success big" disabled>💾 Guardar como PDF</button>
     </aside>
   </main>
+
+  <!-- Avisos y preguntas -->
+  <dialog id="msgDialog">
+    <p id="msgText" class="msg-text"></p>
+    <div class="dialog-actions">
+      <button type="button" id="msgCancel" class="btn">Cancelar</button>
+      <button type="button" id="msgOk" class="btn success">Aceptar</button>
+    </div>
+  </dialog>
 
   <!-- Nombre del PDF -->
   <dialog id="nameDialog">
@@ -100,6 +110,16 @@
     </div>
     <p class="hint">La cantidad de la fila 1 se asigna al primer producto, la de la fila 2 al segundo, y así hasta la fila 19 (la última no trae producto). Si el remito cambia de orden o suma un producto, editá esta lista.</p>
     <label class="field check"><input type="checkbox" id="hiResChk"> Usar la foto de máxima resolución de la cámara (si está disponible)</label>
+    <label class="field">Decimales de las cantidades con coma
+      <select id="decSelect">
+        <option value="2">2 decimales (por ejemplo 489,12)</option>
+        <option value="1">1 decimal</option>
+        <option value="3">3 decimales</option>
+        <option value="0">No exigir una cantidad fija</option>
+      </select>
+    </label>
+    <p class="hint">Si una cantidad se lee con otra cantidad de decimales (por ejemplo 489,1), queda marcada con ⚠ para revisarla.</p>
+    <p id="usageLabel" class="hint"></p>
     <label class="field">Exigencia de lectura
       <select id="sensSelect">
         <option value="estricta">Estricta (avisa ante cualquier duda)</option>
@@ -118,11 +138,11 @@
     <h3>Datos de la página <span id="editNum"></span></h3>
     <div class="edit-body">
       <div class="edit-img">
-        <img id="editImg" alt="Remito">
-        <div id="editStripBox" class="strip-box" hidden>
-          <p class="hint">Esto es lo único que se envía a Google (columna de cantidades):</p>
-          <img id="editStrip" alt="Columna de cantidades">
-        </div>
+        <div class="imgwrap" id="editWrap"><img id="editImg" alt="Remito"></div>
+        <p class="hint legend"><span class="lg" style="background:#2ee06b"></span>Hoja
+          <span class="lg" style="background:#4da3ff"></span>Cantidades
+          <span class="lg" style="background:#ffd24d"></span>Filas
+          <span class="lg" style="background:#ff9d2e"></span>Con número (las únicas que se envían a Google)</p>
       </div>
       <div class="edit-table">
         <div class="erow ehead"><span></span><span>Producto</span><span>Cantidad</span><span></span></div>
@@ -139,6 +159,7 @@
 
   <script src="crop.js"></script>
   <script src="layout.js"></script>
+  <script src="rows.js"></script>
   <script src="enhance.js"></script>
   <script src="ocr.js"></script>
   <script src="pdf.js"></script>

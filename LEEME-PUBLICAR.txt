@@ -90,3 +90,26 @@ CÓMO ACTUALIZAR EN GITHUB (si ya la publicaste)
    a los anteriores con el mismo nombre; la carpeta icons también).
 3. "Commit changes". En 1–2 minutos se publica.
 4. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces para que tome la versión nueva.
+
+------------------------------------------------
+NOVEDAD v4.2: CUADROS EN SECUENCIA, FILA POR FILA
+------------------------------------------------
+- Se dibujan en orden: ① Hoja (verde) → ② Cantidades (azul) → ③ las 19 Filas (amarillo, numeradas).
+  Se ve en la cámara en vivo, en cada foto tomada y en "✏ Datos".
+- Cada fila se revisa sola. Las filas con número se marcan en naranja y SOLO esas se mandan a Cloud
+  Vision, todas juntas en una única consulta. El número de fila se guarda y es el que decide el producto.
+- Lectura de decimales más segura: se normalizan separadores (. , ; ' /), se completa una coma
+  faltante (48912 → 489,12) y se marca con ⚠ cualquier cantidad con otra cantidad de decimales.
+  En "✏ Datos" ves la imagen exacta de cada fila enviada para comprobar a ojo.
+  La cantidad de decimales se elige en ⚙ Ajustes (por defecto 2).
+- Contador de lecturas del mes en ⚙ Ajustes (gratis: 1000 por mes). Cuenta solo en ESTE dispositivo.
+- "Vaciar todo": ahora usa su propio cuadro de confirmación, reinicia la cámara, cancela lo que estaba
+  procesando y deja de nuevo funcionando el arrastre de fotos.
+- Nota: la tabla tiene 19 filas (18 con producto impreso y 1 vacía al final).
+
+CÓMO ACTUALIZAR EN GITHUB
+1. Repositorio > "Add file" > "Upload files".
+2. Arrastrá TODO el contenido de esta carpeta. Hay un archivo NUEVO: rows.js (el resto reemplaza a los
+   anteriores con el mismo nombre; incluí también la carpeta icons).
+3. "Commit changes". En 1–2 minutos se publica.
+4. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces para que tome la versión nueva.

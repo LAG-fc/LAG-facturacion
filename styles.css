@@ -111,3 +111,16 @@ dialog textarea { width: 100%; background: #1b1d21; color: #eee; border: 1px sol
 
 .strip-box { padding: 8px; background: #1b1d21; }
 .strip-box img { width: 55%; max-width: 260px; display: block; margin: 6px auto 0; border: 1px solid #444; }
+
+/* ---------- Recuadros sobre las páginas ---------- */
+.imgwrap { position: relative; line-height: 0; cursor: pointer; }
+.imgwrap img { width: 100%; display: block; }
+.imgwrap canvas.ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.thumb .meta { font-size: 12px; color: #9ad; margin-top: 6px; min-height: 16px; }
+.steps-badge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.65); color: #fff; font-size: 13px; padding: 4px 10px; border-radius: 12px; pointer-events: none; }
+.msg-text { white-space: pre-line; font-size: 15px; line-height: 1.4; margin: 0 0 6px; }
+.legend { line-height: 1.8; }
+.legend .lg { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin: 0 4px 0 10px; vertical-align: -1px; }
+.erow .rowcrop { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9ad; background: #1b1d21; border-radius: 6px; padding: 6px; }
+.erow .rowcrop img { max-height: 70px; max-width: 100%; object-fit: contain; align-self: flex-start; background: #fff; border-radius: 4px; }
+.erow:has(.rowcrop) { row-gap: 6px; }

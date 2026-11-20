@@ -9,14 +9,14 @@
   const totalsTable = $("totalsTable"), totalsEmpty = $("totalsEmpty");
   const nameDialog = $("nameDialog"), nameForm = $("nameForm"), nameInput = $("nameInput"), cancelName = $("cancelName");
   const settingsDialog = $("settingsDialog"), keyInput = $("keyInput"), keyMsg = $("keyMsg");
-  const sensSelect = $("sensSelect");
+  const sensSelect = $("sensSelect"), decSelect = $("decSelect");
   const uploadBtn = $("uploadBtn"), fileInput = $("fileInput"), pagesPanel = $("pagesPanel");
   const catalogInput = $("catalogInput"), hiResChk = $("hiResChk");
-  const editStrip = $("editStrip"), editStripBox = $("editStripBox");
+  const editWrap = $("editWrap");
   const editDialog = $("editDialog"), editRowsEl = $("editRows"), editImg = $("editImg"), editNum = $("editNum"), editErr = $("editErr");
 
   const DEFAULTS = {
-    apiKey: "", sensitivity: "normal", autoCrop: true,
+    apiKey: "", sensitivity: "normal", decimals: 2, autoCrop: true,
     filterMode: "mejorado", hiRes: true, catalog: OCR.DEFAULT_CATALOG.join("\n"), catalogVersion: 5
   };
   let settings = { ...DEFAULTS };
@@ -42,12 +42,47 @@
     statusEl.textContent = msg;
     if (ms) setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ""; }, ms);
   }
-  const anyDialogOpen = () => nameDialog.open || settingsDialog.open || editDialog.open;
+  const anyDialogOpen = () => nameDialog.open || settingsDialog.open || editDialog.open || msgDialog.open;
   const toBlob = (canvas, q = 0.92) => new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
+
+  // Avisos y preguntas propios de la página. Los cuadros nativos (alert/confirm) congelan la cámara y
+  // frenan todo en el celular, por eso no se usan.
+  const msgDialog = $("msgDialog"), msgText = $("msgText"), msgOk = $("msgOk"), msgCancel = $("msgCancel");
+  function askConfirm(text, okLabel, cancelLabel) {
+    return new Promise((resolve) => {
+      msgText.textContent = text;
+      msgOk.textContent = okLabel || "Aceptar";
+      msgCancel.textContent = cancelLabel || "Cancelar";
+      msgCancel.hidden = cancelLabel === null;
+      const done = (v) => { msgOk.onclick = msgCancel.onclick = msgDialog.oncancel = null; if (msgDialog.open) msgDialog.close(); resolve(v); };
+      msgOk.onclick = () => done(true);
+      msgCancel.onclick = () => done(false);
+      msgDialog.oncancel = (e) => { e.preventDefault(); done(false); };
+      if (!msgDialog.open) msgDialog.showModal();
+    });
+  }
+  const showMessage = (text) => askConfirm(text, "Entendido", null);
+
+  // Cuántas lecturas de Cloud Vision se usaron este mes (en este dispositivo). Gratis hasta 1.000 por mes.
+  const FREE_READS = 1000;
+  function monthKey() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+  function getUsage() {
+    try { const u = JSON.parse(localStorage.getItem("visionUsage") || "{}"); return u.m === monthKey() ? u.n || 0 : 0; } catch (e) { return 0; }
+  }
+  function addUsage(n) {
+    try { localStorage.setItem("visionUsage", JSON.stringify({ m: monthKey(), n: getUsage() + n })); } catch (e) { /* nada */ }
+    updateUsageLabels();
+  }
+  function updateUsageLabels() {
+    const n = getUsage();
+    const el = $("usageLabel");
+    if (el) el.textContent = "Lecturas de Cloud Vision usadas este mes en este dispositivo: " + n + " de " + FREE_READS + " gratis" + (n >= FREE_READS * 0.9 ? " ⚠ cerca del límite gratuito" : "") + ".";
+  }
 
   // ---------- Cámara ----------
   async function startCamera(deviceId) {
     if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = null;
     cameraMsg.classList.remove("hidden");
     cameraMsg.textContent = "Iniciando cámara…";
     try {
@@ -74,6 +109,29 @@
       cameraMsg.textContent = m;
     }
   }
+
+  // Si el video se congeló o la cámara se cortó (por ejemplo después de un aviso o de volver a la app), se reinicia sola.
+  let camBadTicks = 0, camRestarting = false;
+  function cameraAlive() {
+    const t = stream && stream.getVideoTracks()[0];
+    return !!(t && t.readyState === "live" && !video.paused && !video.ended && video.readyState >= 2);
+  }
+  async function ensureCamera() {
+    if (camRestarting) return;
+    if (cameraAlive()) return;
+    camRestarting = true;
+    try {
+      if (stream && stream.getVideoTracks()[0] && stream.getVideoTracks()[0].readyState === "live") { await video.play(); }
+      else await startCamera(cameraSelect.value || undefined);
+    } catch (e) { try { await startCamera(cameraSelect.value || undefined); } catch (e2) { /* nada */ } }
+    camRestarting = false;
+  }
+  function watchCamera() {
+    if (document.hidden) return;
+    if (cameraAlive()) { camBadTicks = 0; return; }
+    if (++camBadTicks >= 5) { camBadTicks = 0; ensureCamera(); }   // ~2 segundos con la cámara trabada
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) ensureCamera(); });
 
   async function listCameras() {
     const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
@@ -106,34 +164,114 @@
     return det.quad.map((p) => ({ x: p.x * kx, y: p.y * ky }));
   }
 
-  // Contorno verde en vivo sobre la cámara: muestra qué se va a recortar.
-  function drawOverlay(quad) {
+  // ---------- Recuadros en vivo, en orden: 1) hoja  2) columna de cantidades  3) filas ----------
+  const COLORS = { page: "#2ee06b", table: "#4da3ff", rows: "#ffd24d", filled: "#ff9d2e" };
+  const stepsBadge = $("stepsBadge");
+  const live = { table: null, stable: 0, analyzing: false, shown: 0 };
+  const analysisCanvas = document.createElement("canvas");
+  const actx = analysisCanvas.getContext("2d", { willReadFrequently: true });
+
+  // Ubica la tabla en un cuadro del video (se hace cada ~1,5 s, no en cada cuadro)
+  function analyzeLive(quad) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const s = Math.min(1, 900 / Math.max(vw, vh));
+    analysisCanvas.width = Math.round(vw * s); analysisCanvas.height = Math.round(vh * s);
+    actx.drawImage(video, 0, 0, analysisCanvas.width, analysisCanvas.height);
+    const src = actx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
+    const q = quad.map((p) => ({ x: p.x * s, y: p.y * s }));
+    const page = canvasFromImageData(Crop.warp(src, q, 800));
+    const pc = page.getContext("2d", { willReadFrequently: true });
+    const d = pc.getImageData(0, 0, page.width, page.height);
+    Enhance.enhance(d); pc.putImageData(d, 0, 0);
+    const o = bestOrientation(page);
+    return { table: o.table, deg: o.deg, t: Date.now() };
+  }
+
+  function maybeAnalyzeLive(quad) {
+    if (live.analyzing || live.stable < 2) return;
+    if (live.table && Date.now() - live.table.t < 1500) return;
+    live.analyzing = true;
+    setTimeout(() => {
+      try { live.table = analyzeLive(quad); } catch (e) { live.table = null; }
+      live.analyzing = false;
+    }, 0);
+  }
+
+  function setSteps(n) {
+    if (live.shown === n) return;
+    live.shown = n;
+    const t = ["", "①", "①②", "①②③"][n];
+    stepsBadge.hidden = n === 0;
+    stepsBadge.textContent = n === 0 ? "" : t + " " + ["", "Hoja", "Hoja → Cantidades", "Hoja → Cantidades → Filas"][n];
+  }
+
+  function poly(ctx, pts, close) {
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    if (close) ctx.closePath();
+  }
+
+  function drawLive(quad) {
     const cw = videoWrap.clientWidth, ch = videoWrap.clientHeight;
     if (overlay.width !== cw) overlay.width = cw;
     if (overlay.height !== ch) overlay.height = ch;
     const ctx = overlay.getContext("2d");
     ctx.clearRect(0, 0, cw, ch);
-    if (!quad || !video.videoWidth) return;
+    if (!quad || !video.videoWidth) { setSteps(0); return; }
     const vw = video.videoWidth, vh = video.videoHeight;
     const sc = Math.min(cw / vw, ch / vh);
     const ox = (cw - vw * sc) / 2, oy = (ch - vh * sc) / 2;
-    ctx.beginPath();
-    quad.forEach((p, i) => { const x = ox + p.x * sc, y = oy + p.y * sc; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-    ctx.closePath();
-    ctx.fillStyle = "rgba(46,158,91,.18)";
-    ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "#2ee06b";
-    ctx.stroke();
+    const scr = (p) => ({ x: ox + p.x * sc, y: oy + p.y * sc });
+
+    // 1) hoja completa
+    poly(ctx, quad.map(scr), true);
+    ctx.fillStyle = "rgba(46,158,91,.14)"; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = COLORS.page; ctx.stroke();
+    let steps = 1;
+
+    const lt = live.table;
+    if (lt && lt.table && lt.table.ok && live.stable >= 3) {
+      // 2) recuadro interior de la columna de cantidades
+      const rq = Crop.rotateQuad(quad, lt.deg / 90);
+      const T = lt.table;
+      const at = (fx, fy) => scr(Crop.mapPoint(rq, fx, fy));
+      const box = [at(T.x0, T.y0), at(T.x1, T.y0), at(T.x1, T.y1), at(T.x0, T.y1)];
+      poly(ctx, box, true);
+      ctx.fillStyle = "rgba(77,163,255,.16)"; ctx.fill();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = COLORS.table; ctx.stroke();
+      steps = 2;
+      if (live.stable >= 5) {
+        // 3) las filas (la grilla exacta se ajusta a los renglones al sacar la foto)
+        const N = Rows.N_ROWS;
+        ctx.strokeStyle = COLORS.rows; ctx.lineWidth = 1.2; ctx.fillStyle = COLORS.rows;
+        ctx.font = "bold 11px system-ui, sans-serif";
+        for (let i = 0; i <= N; i++) {
+          const fy = T.y0 + (T.y1 - T.y0) * (i / N);
+          const a = at(T.x0, fy), b = at(T.x1, fy);
+          poly(ctx, [a, b], false); ctx.stroke();
+          if (i < N) {
+            const m = at(T.x0, T.y0 + (T.y1 - T.y0) * ((i + 0.5) / N));
+            ctx.fillText(String(i + 1), m.x + 3, m.y + 4);
+          }
+        }
+        steps = 3;
+      }
+    }
+    setSteps(steps);
   }
 
   function liveLoop() {
     try {
       if (autoCropChk.checked && video.videoWidth && !capturing && !document.hidden) {
-        drawOverlay(detectQuad(video, video.videoWidth, video.videoHeight));
+        const quad = detectQuad(video, video.videoWidth, video.videoHeight);
+        if (quad) { live.stable++; maybeAnalyzeLive(quad); }
+        else { live.stable = 0; live.table = null; }
+        drawLive(quad);
       } else {
-        drawOverlay(null);
+        live.stable = 0;
+        drawLive(null);
       }
+      watchCamera();
     } catch (e) { /* ignorar errores de un cuadro */ }
     setTimeout(liveLoop, 400);
   }
@@ -232,6 +370,9 @@
 
   const imageDataOf = (c) => c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height);
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let epoch = 0;   // sube cada vez que se vacía todo: lo que estaba en proceso se descarta
+
   // Busca la tabla en la hoja. Una hoja derecha tiene la columna de cantidades a la izquierda; si la
   // hoja está de costado o al revés, se prueban los giros posibles y gana el que muestra la tabla bien.
   function bestOrientation(enh) {
@@ -246,12 +387,11 @@
     return best;
   }
 
-  // Recorta SOLO la columna de cantidades (a máxima resolución) y la deja lista para leer.
-  async function makeStrip(table, srcCanvas, quadForSrc) {
+  // Recorta SOLO la columna de cantidades (a máxima resolución) y la mejora. Devuelve un canvas.
+  function makeStripCanvas(table, srcCanvas, quadForSrc) {
     let strip;
     if (quadForSrc) {
-      const src = imageDataOf(srcCanvas);
-      strip = canvasFromImageData(Crop.warp(src, Crop.subQuad(quadForSrc, table), 2600, { noSnap: true }));
+      strip = canvasFromImageData(Crop.warp(imageDataOf(srcCanvas), Crop.subQuad(quadForSrc, table), 2600, { noSnap: true }));
     } else {
       const sx = Math.round(table.x0 * srcCanvas.width), sy = Math.round(table.y0 * srcCanvas.height);
       const sw = Math.max(8, Math.round((table.x1 - table.x0) * srcCanvas.width));
@@ -264,11 +404,55 @@
     const d = ctx.getImageData(0, 0, strip.width, strip.height);
     Enhance.enhance(d);
     ctx.putImageData(d, 0, 0);
-    return toBlob(strip, 0.92);
+    return strip;
+  }
+
+  // Recorte de UNA fila para mandarlo a Cloud Vision: la escritura con aire blanco alrededor y agrandada.
+  async function cropRowBlob(strip, bbox, pitch) {
+    const padX = Math.round(pitch * 0.6), padY = Math.round(pitch * 0.25);
+    const sx = Math.max(0, bbox.x0 - padX), sx1 = Math.min(strip.width, bbox.x1 + padX);
+    const sy = Math.max(0, bbox.y0 - padY), sy1 = Math.min(strip.height, bbox.y1 + padY);
+    const inkH = Math.max(1, bbox.y1 - bbox.y0 + 1);
+    const scale = Math.min(4, Math.max(1, 110 / inkH));
+    const margin = Math.round(pitch * 0.5 * scale);
+    const w = Math.round((sx1 - sx) * scale), h = Math.round((sy1 - sy) * scale);
+    const c = document.createElement("canvas");
+    c.width = w + 2 * margin; c.height = h + 2 * margin;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(strip, sx, sy, sx1 - sx, sy1 - sy, margin, margin, w, h);
+    return toBlob(c, 0.92);
+  }
+
+  // De la tira: grilla de filas, renglones borrados, qué filas tienen número, y recorte de esas filas.
+  async function analyzeStrip(strip) {
+    const ctx = strip.getContext("2d", { willReadFrequently: true });
+    const img = ctx.getImageData(0, 0, strip.width, strip.height);
+    const grid = Rows.fitGrid(img, Rows.N_ROWS);
+    Rows.removeRuling(img, grid);
+    ctx.putImageData(img, 0, 0);
+    const ink = Rows.rowInk(img, grid);
+    const rowFracs = [];
+    for (let k = 0; k <= grid.n; k++) rowFracs.push(Math.min(1, Math.max(0, (grid.top + k * grid.pitch) / strip.height)));
+    const rowMeta = ink.map((r, i) => ({ index: i + 1, nonEmpty: r.nonEmpty, straddle: r.straddle }));
+    const rowCrops = {};
+    for (let i = 0; i < ink.length; i++) {
+      if (!ink[i].nonEmpty) continue;
+      const blob = await cropRowBlob(strip, ink[i].bbox, grid.pitch);
+      rowCrops[i + 1] = { blob, url: URL.createObjectURL(blob) };
+    }
+    return { rowFracs, rowMeta, rowCrops, gridFitted: grid.fitted };
+  }
+
+  function freeAnalysis(p) {
+    for (const k of Object.keys(p.rowCrops || {})) URL.revokeObjectURL(p.rowCrops[k].url);
+    p.rowCrops = {};
   }
 
   // Recorta el papel, mejora la imagen y la agrega como una página nueva.
   async function addPageFromCanvas(source) {
+    const myEpoch = epoch;
     const full = fitCanvas(source, START_SIDE);
     let work, note = "", quad = null;
     if (autoCropChk.checked) {
@@ -290,14 +474,15 @@
     Enhance.enhance(imgData);
     ectx.putImageData(imgData, 0, 0);
 
-    // Orientación según la tabla y recuadro de la columna de cantidades
+    // Orientación según la tabla, recuadro de cantidades y filas
     const o = bestOrientation(enh);
     if (o.deg) { work = rotateCanvas(work, o.deg); enh = rotateCanvas(enh, o.deg); }
     const table = o.table;
-    let stripBlob = null;
+    let an = { rowFracs: [], rowMeta: [], rowCrops: {}, gridFitted: false };
     try {
-      stripBlob = await makeStrip(table, o.deg ? rotateCanvas(full, o.deg) : full, quad ? Crop.rotateQuad(quad, o.deg / 90) : null);
-    } catch (e) { console.error("No se pudo recortar la columna de cantidades:", e); }
+      const strip = makeStripCanvas(table, o.deg ? rotateCanvas(full, o.deg) : full, quad ? Crop.rotateQuad(quad, o.deg / 90) : null);
+      an = await analyzeStrip(strip);
+    } catch (e) { console.error("No se pudo analizar la columna de cantidades:", e); }
     if (!table.ok) note += " · no se encontró la tabla: revisá las cantidades (⚠)";
     const ocrBlob = await toBlob(enh, 0.92);
 
@@ -312,15 +497,90 @@
     }
 
     const page = {
-      id: nextPageId++, blob, ocrBlob, stripBlob, stripUrl: stripBlob ? URL.createObjectURL(stripBlob) : "",
-      layoutOk: table.ok, w: work.width, h: work.height,
-      url: URL.createObjectURL(blob), status: "reading", rows: [], runId: 0
+      id: nextPageId++, blob, ocrBlob, w: work.width, h: work.height,
+      table: { x0: table.x0, x1: table.x1, y0: table.y0, y1: table.y1 }, layoutOk: table.ok,
+      rowFracs: an.rowFracs, rowMeta: an.rowMeta, rowCrops: an.rowCrops,
+      stage: 0, url: URL.createObjectURL(blob), status: "reading", rows: [], runId: 0
     };
+    if (myEpoch !== epoch) {            // mientras tanto se apretó "Vaciar todo": se descarta
+      URL.revokeObjectURL(page.url); freeAnalysis(page);
+      return { page: null, note: "", w: work.width, h: work.height, discarded: true };
+    }
     pages.push(page);
     render();
     thumbs.scrollTop = thumbs.scrollHeight;
+    playStages(page);
     runOcr(page);
     return { page, note, w: work.width, h: work.height };
+  }
+
+  // Muestra los recuadros de la página uno por uno: 1) hoja  2) cantidades  3) filas  4) filas con número
+  async function playStages(page) {
+    for (let s = 1; s <= 4; s++) {
+      if (!pages.includes(page)) return;
+      page.stage = s;
+      refreshOverlay(page);
+      await sleep(s === 1 ? 250 : 500);
+    }
+  }
+
+  function drawPageOverlay(canvas, page) {
+    const W = canvas.width, H = canvas.height, ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+    const st = page.stage || 0;
+    if (!st) return;
+    const lw = Math.max(2, W / 160);
+    // 1) hoja completa
+    ctx.lineWidth = lw * 1.6; ctx.strokeStyle = COLORS.page;
+    ctx.strokeRect(lw, lw, W - 2 * lw, H - 2 * lw);
+    const T = page.table;
+    const X0 = T.x0 * W, X1 = T.x1 * W, Y0 = T.y0 * H, Y1 = T.y1 * H;
+    if (st >= 2) {   // 2) recuadro interior de cantidades
+      ctx.fillStyle = "rgba(77,163,255,.14)"; ctx.fillRect(X0, Y0, X1 - X0, Y1 - Y0);
+      ctx.lineWidth = lw * 1.4; ctx.strokeStyle = COLORS.table; ctx.strokeRect(X0, Y0, X1 - X0, Y1 - Y0);
+    }
+    const fr = page.rowFracs || [];
+    if (st >= 3 && fr.length > 1) {   // 3) filas
+      ctx.lineWidth = Math.max(1, lw * 0.5); ctx.strokeStyle = COLORS.rows; ctx.fillStyle = COLORS.rows;
+      ctx.font = "bold " + Math.max(8, Math.round((Y1 - Y0) / (fr.length - 1) * 0.55)) + "px system-ui, sans-serif";
+      for (let k = 0; k < fr.length; k++) {
+        const y = Y0 + fr[k] * (Y1 - Y0);
+        ctx.beginPath(); ctx.moveTo(X0, y); ctx.lineTo(X1, y); ctx.stroke();
+        if (k < fr.length - 1) ctx.fillText(String(k + 1), X0 + 3, y + (fr[k + 1] - fr[k]) * (Y1 - Y0) * 0.72);
+      }
+    }
+    if (st >= 4) {   // 4) filas con número (las únicas que se mandan a leer)
+      for (const r of page.rowMeta || []) {
+        if (!r.nonEmpty) continue;
+        const ya = Y0 + fr[r.index - 1] * (Y1 - Y0), yb = Y0 + fr[r.index] * (Y1 - Y0);
+        ctx.fillStyle = "rgba(255,157,46,.38)"; ctx.fillRect(X0, ya, X1 - X0, yb - ya);
+        ctx.lineWidth = lw * 1.2; ctx.strokeStyle = COLORS.filled; ctx.strokeRect(X0, ya, X1 - X0, yb - ya);
+      }
+    }
+  }
+
+  // Redibuja solo los recuadros de la tarjeta de esa página (sin rearmar la lista)
+  function refreshOverlay(page) {
+    for (const cv of document.querySelectorAll('canvas.ov[data-id="' + page.id + '"]')) drawPageOverlay(cv, page);
+    const m = document.querySelector('.thumb[data-id="' + page.id + '"] .meta');
+    if (m) m.textContent = stageText(page);
+  }
+
+  const STAGE_NAMES = ["", "Paso 1/4 · hoja completa", "Paso 2/4 · recuadro de cantidades", "Paso 3/4 · filas numeradas", ""];
+  function stageText(page) {
+    if ((page.stage || 0) < 4) return STAGE_NAMES[page.stage || 0] || "";
+    const idx = (page.rowMeta || []).filter((r) => r.nonEmpty).map((r) => r.index);
+    return idx.length ? "Filas con número: " + idx.join(", ") + " → " + idx.length + (idx.length === 1 ? " lectura" : " lecturas")
+                      : "Ninguna fila con número (no se envió nada)";
+  }
+
+  // Un canvas del tamaño (proporción) de la página, para dibujar encima de la imagen
+  function makeOverlayCanvas(page) {
+    const cv = document.createElement("canvas");
+    cv.className = "ov"; cv.dataset.id = page.id;
+    cv.width = 420; cv.height = Math.max(2, Math.round(420 * page.h / page.w));
+    drawPageOverlay(cv, page);
+    return cv;
   }
 
   // ---------- Captura con la cámara ----------
@@ -415,8 +675,10 @@
     setBusy(true);
     const failed = [];
     let ok = 0;
+    const myEpoch = epoch;
     try {
       for (let i = 0; i < files.length; i++) {
+        if (myEpoch !== epoch) break;        // se apretó "Vaciar todo": se cancela lo que faltaba subir
         const f = files[i];
         setStatus("Procesando " + (i + 1) + " de " + files.length + "…", 0);
         if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) { failed.push(f.name); continue; }
@@ -435,7 +697,7 @@
     }
     setStatus(ok ? ok + " foto(s) cargada(s) ✔" : "", 6000);
     if (failed.length) {
-      alert("No se pudieron abrir estos archivos:\n• " + failed.join("\n• ") +
+      showMessage("No se pudieron abrir estos archivos:\n• " + failed.join("\n• ") +
         "\n\nSolo se aceptan imágenes (JPG, PNG, WEBP). Si la foto es HEIC, convertila a JPG; si es un PDF, exportá sus páginas como imágenes.");
     }
   }
@@ -444,17 +706,20 @@
   fileInput.addEventListener("change", () => { importFiles(fileInput.files); fileInput.value = ""; });
 
   const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
-  let dragDepth = 0;
-  pagesPanel.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; pagesPanel.classList.add("dragover"); });
-  pagesPanel.addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
-  pagesPanel.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) pagesPanel.classList.remove("dragover"); });
+  // El resaltado se apaga solo si deja de llegar "dragover" (así nunca queda pegado).
+  let dragTimer = null;
+  function resetDragState() { clearTimeout(dragTimer); dragTimer = null; pagesPanel.classList.remove("dragover"); }
+  function markDrag() { pagesPanel.classList.add("dragover"); clearTimeout(dragTimer); dragTimer = setTimeout(resetDragState, 250); }
+  pagesPanel.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); markDrag(); });
+  pagesPanel.addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; markDrag(); });
+  pagesPanel.addEventListener("dragleave", () => { resetDragState(); });
   pagesPanel.addEventListener("drop", (e) => {
     if (!hasFiles(e)) return;
     e.preventDefault(); e.stopPropagation();
-    dragDepth = 0;
-    pagesPanel.classList.remove("dragover");
+    resetDragState();
     importFiles(e.dataTransfer.files);
   });
+  window.addEventListener("dragend", resetDragState);
   // Si sueltan una foto en cualquier otro lugar de la ventana, también se carga (y el navegador no la abre).
   window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
   window.addEventListener("drop", (e) => { if (hasFiles(e)) { e.preventDefault(); if (!anyDialogOpen()) importFiles(e.dataTransfer.files); } });
@@ -474,29 +739,37 @@
   const catalogList = () => String(settings.catalog || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
 
   async function runOcr(page) {
-    const myRun = ++page.runId;
+    const myRun = ++page.runId, myEpoch = epoch;
     page.rows = [];
-    if (!settings.apiKey || !page.stripBlob) { page.status = "alert"; render(); return; }
+    const todo = (page.rowMeta || []).filter((r) => r.nonEmpty && page.rowCrops[r.index]);
+    if (!todo.length || !settings.apiKey) { page.status = "alert"; render(); return; }
     page.status = "reading";
     render();
     await ocrAcquire();
+    const stale = () => page.runId !== myRun || myEpoch !== epoch || !pages.includes(page) || page.status === "manual";
     try {
-      if (page.runId !== myRun || !pages.includes(page) || page.status === "manual") return;
-      // A Cloud Vision solo se le manda la columna de cantidades (1 imagen = 1 lectura facturable).
-      const resp = await OCR.recognize(page.stripBlob, settings.apiKey);
-      if (page.runId !== myRun || !pages.includes(page) || page.status === "manual") return;
-      const { words, height } = OCR.extractWords(resp, { autoRotate: false });
-      const { rows } = OCR.buildRowsStrip(words, {
-        height: height || page.stripH, products: catalogList(), minConf: OCR.minConfFor(settings.sensitivity),
-        layoutOk: page.layoutOk
+      if (stale()) return;
+      // A Cloud Vision se le mandan SOLO las filas con número (cada una es una lectura facturable).
+      const resps = await OCR.recognizeBatch(todo.map((r) => page.rowCrops[r.index].blob), settings.apiKey);
+      addUsage(todo.length);
+      if (stale()) return;
+      const cells = todo.map((r, k) => {
+        const resp = resps[k];
+        if (!resp || resp.error) return { index: r.index, words: [], failed: true };
+        const { words } = OCR.extractWords(resp, { autoRotate: false });
+        return { index: r.index, words, straddle: r.straddle };
       });
-      page.rows = rows;
-      page.status = rows.length && !rows.some((r) => r.low) ? "ok" : "alert";
+      page.rows = OCR.buildRowsFromCells(cells, {
+        products: catalogList(), minConf: OCR.minConfFor(settings.sensitivity),
+        decimals: settings.decimals, layoutOk: page.layoutOk
+      });
+      page.status = page.rows.length && !page.rows.some((r) => r.low) ? "ok" : "alert";
     } catch (err) {
       console.error("Lectura de texto falló:", err);
-      if (page.runId !== myRun || page.status === "manual") return;
+      if (stale()) return;
       page.rows = [];
       page.status = "alert";
+      setStatus("No se pudo leer: " + err.message, 8000);
     } finally {
       ocrRelease();
     }
@@ -514,18 +787,22 @@
         '<span class="num">' + (i + 1) + "</span>" +
         (p.status === "reading" ? '<span class="badge reading">⏳</span>' : "") +
         (p.status === "alert" ? '<button class="badge alert">⚠</button>' : "") +
-        '<img alt="Página ' + (i + 1) + '">' +
+        '<div class="imgwrap"><img alt="Página ' + (i + 1) + '"></div>' +
+        '<div class="meta"></div>' +
         '<div class="tools"><button class="btn small edit">✏ Datos</button>' +
         '<button class="btn small rot">⟳ Girar</button>' +
         '<button class="btn small danger del">🗑</button></div>';
+      card.dataset.id = p.id;
       card.querySelector("img").src = p.url;
-      card.querySelector("img").addEventListener("click", () => openEditor(p));
+      card.querySelector(".imgwrap").appendChild(makeOverlayCanvas(p));
+      card.querySelector(".meta").textContent = stageText(p);
+      card.querySelector(".imgwrap").addEventListener("click", () => openEditor(p));
       card.querySelector(".edit").addEventListener("click", () => openEditor(p));
       const alertBtn = card.querySelector(".badge.alert");
       if (alertBtn) alertBtn.addEventListener("click", () => openEditor(p));
       card.querySelector(".del").addEventListener("click", () => {
         URL.revokeObjectURL(p.url);
-        if (p.stripUrl) URL.revokeObjectURL(p.stripUrl);
+        freeAnalysis(p);
         pages.splice(pages.indexOf(p), 1);
         render();
       });
@@ -582,7 +859,7 @@
 
   async function rotatePage(p) {
     await rotatePageBy(p, 270);   // 270 = girar 90° a la derecha
-    // Con la hoja girada se vuelve a ubicar la tabla (sobre la imagen de la página) y se vuelve a leer.
+    // Con la hoja girada se vuelve a ubicar la tabla y las filas (sobre la imagen de la página) y se vuelve a leer.
     try {
       const bmp = await createImageBitmap(p.ocrBlob);
       const c = document.createElement("canvas");
@@ -590,22 +867,30 @@
       c.getContext("2d").drawImage(bmp, 0, 0);
       if (bmp.close) bmp.close();
       const table = Layout.findTable(imageDataOf(c));
-      p.layoutOk = table.ok;
-      if (p.stripUrl) URL.revokeObjectURL(p.stripUrl);
-      p.stripBlob = await makeStrip(table, c, null);
-      p.stripUrl = URL.createObjectURL(p.stripBlob);
-    } catch (e) { console.error("No se pudo recortar la columna de cantidades:", e); }
+      const an = await analyzeStrip(makeStripCanvas(table, c, null));
+      freeAnalysis(p);
+      Object.assign(p, { table: { x0: table.x0, x1: table.x1, y0: table.y0, y1: table.y1 }, layoutOk: table.ok,
+        rowFracs: an.rowFracs, rowMeta: an.rowMeta, rowCrops: an.rowCrops, stage: 4 });
+    } catch (e) { console.error("No se pudo analizar la columna de cantidades:", e); }
     if (p.status === "manual") render();
     else runOcr(p);
   }
 
-  clearBtn.addEventListener("click", () => {
+  function clearAll() {
+    epoch++;                                   // lo que estaba procesándose se descarta
+    pages.forEach((p) => { URL.revokeObjectURL(p.url); freeAnalysis(p); });
+    pages = [];
+    setBusy(false);
+    resetDragState();
+    live.stable = 0; live.table = null;
+    render();
+    ensureCamera();
+    setStatus("Fotos borradas. Podés seguir escaneando.", 4000);
+  }
+
+  clearBtn.addEventListener("click", async () => {
     if (!pages.length) return;
-    if (confirm("¿Borrar todas las fotos tomadas?")) {
-      pages.forEach((p) => URL.revokeObjectURL(p.url));
-      pages = [];
-      render();
-    }
+    if (await askConfirm("¿Borrar todas las fotos tomadas?", "Sí, vaciar todo", "Cancelar")) clearAll();
   });
 
   // ---------- Edición manual de datos ----------
@@ -617,13 +902,14 @@
     editRows = page.rows.map((r) => ({
       name: r.name || "",
       qtyText: r.qty !== null && r.qty !== undefined ? OCR.formatQty(r.qty) : "",
-      low: !!r.low
+      low: !!r.low, index: r.index || 0, crop: r.index && page.rowCrops[r.index] ? page.rowCrops[r.index].url : ""
     }));
     if (!editRows.length) editRows.push({ name: "", qtyText: "", low: false });
     editNum.textContent = String(pages.indexOf(page) + 1);
     editImg.src = page.url;
-    editStrip.src = page.stripUrl || "";
-    editStripBox.hidden = !page.stripUrl;
+    editWrap.querySelectorAll("canvas.ov").forEach((c) => c.remove());
+    const ov = makeOverlayCanvas({ ...page, stage: 4 });
+    editWrap.appendChild(ov);
     editErr.textContent = "";
     renderEditRows();
     editDialog.showModal();
@@ -647,6 +933,14 @@
       nameIn.addEventListener("input", () => { row.name = nameIn.value; nameIn.classList.remove("bad"); touched(); });
       qtyIn.addEventListener("input", () => { row.qtyText = qtyIn.value; qtyIn.classList.remove("bad"); touched(); });
       del.addEventListener("click", () => { editRows.splice(i, 1); renderEditRows(); });
+      if (row.crop) {
+        const lab = document.createElement("div");
+        lab.className = "rowcrop";
+        const im = document.createElement("img"); im.src = row.crop; im.alt = "Fila " + row.index;
+        const sp = document.createElement("span"); sp.textContent = "Fila " + row.index + " — lo que se envió a Google";
+        lab.append(sp, im);
+        div.appendChild(lab);
+      }
       div.append(warn, nameIn, qtyIn, del);
       editRowsEl.appendChild(div);
     });
@@ -674,7 +968,7 @@
       if (!nameOk) inputs[i].children[1].classList.add("bad");
       if (!qtyOk) inputs[i].children[2].classList.add("bad");
       if (!nameOk || !qtyOk) { bad = true; return; }
-      out.push({ name, qty, qtyText, conf: 1, lineText: name, low: false });
+      out.push({ name, qty, qtyText, conf: 1, lineText: name, low: false, index: row.index || undefined });
     });
     if (bad) { editErr.textContent = "Completá producto y una cantidad válida (por ejemplo 12 o 2,5) en las filas marcadas."; return; }
     editing.rows = out;
@@ -688,6 +982,8 @@
   settingsBtn.addEventListener("click", () => {
     keyInput.value = settings.apiKey;
     sensSelect.value = settings.sensitivity;
+    decSelect.value = String(settings.decimals === undefined ? 2 : settings.decimals);
+    updateUsageLabels();
     catalogInput.value = settings.catalog;
     hiResChk.checked = !!settings.hiRes;
     keyMsg.textContent = "";
@@ -697,6 +993,7 @@
   $("saveSettings").addEventListener("click", () => {
     settings.apiKey = keyInput.value.trim();
     settings.sensitivity = sensSelect.value;
+    settings.decimals = Number(decSelect.value);
     settings.catalog = catalogInput.value;
     settings.hiRes = hiResChk.checked;
     persistSettings();
@@ -718,6 +1015,7 @@
       ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 320, 120);
       ctx.fillStyle = "#000"; ctx.font = "40px sans-serif"; ctx.fillText("Prueba 123", 20, 70);
       await OCR.recognize(await toBlob(c, 0.9), key);
+      addUsage(1);
       keyMsg.textContent = "✔ La clave funciona.";
     } catch (err) {
       keyMsg.textContent = "✖ " + err.message + " — revisá que la clave esté bien copiada, que la API Cloud Vision esté habilitada y la facturación activa.";
@@ -735,16 +1033,16 @@
     return "Remitos " + d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + "." + p(d.getMinutes());
   }
 
-  saveBtn.addEventListener("click", () => {
+  saveBtn.addEventListener("click", async () => {
     if (pages.some((p) => p.status === "reading")) {
-      alert("Todavía se están leyendo algunas páginas (⏳). Esperá unos segundos y probá de nuevo.");
+      await showMessage("Todavía se están leyendo algunas páginas (⏳). Esperá unos segundos y probá de nuevo.");
       return;
     }
     const unverified = pages.filter((p) => p.status === "alert").length;
-    if (unverified && !confirm(
+    if (unverified && !(await askConfirm(
       "Hay " + unverified + " página(s) con el símbolo ⚠ (datos sin verificar).\n\n" +
       "Sus cantidades se suman tal como se leyeron, o no se suman si no se leyó nada.\n\n" +
-      "¿Guardar el PDF igual?\n(Cancelar para revisarlas con “✏ Datos”.)")) return;
+      "¿Guardar el PDF igual? (Con “Revisar” podés corregirlas con ✏ Datos.)", "Guardar igual", "Revisar"))) return;
     nameInput.value = defaultName();
     nameDialog.showModal();
     nameInput.focus();
@@ -783,11 +1081,7 @@
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
       setStatus("PDF “" + name + ".pdf” guardado en Descargas ✔", 6000);
-      if (confirm("PDF guardado en Descargas.\n\n¿Querés vaciar las fotos para empezar un remito nuevo?")) {
-        pages.forEach((p) => URL.revokeObjectURL(p.url));
-        pages = [];
-        render();
-      }
+      if (await askConfirm("PDF guardado en Descargas.\n\n¿Querés vaciar las fotos para empezar un remito nuevo?", "Sí, vaciar", "No, dejarlas")) clearAll();
     } catch (err) {
       console.error(err);
       setStatus("Error al generar el PDF: " + err.message, 8000);
@@ -829,7 +1123,7 @@
   if (/iPhone|iPad|iPod/i.test(navigator.userAgent) && !isStandalone()) {
     installBtn.hidden = false;
     installBtn.addEventListener("click", () => {
-      if (!installEvt) alert("Para instalarla en el iPhone:\n\n1. Abrí esta página en Safari.\n2. Tocá el botón Compartir (el cuadrado con la flecha hacia arriba).\n3. Elegí “Añadir a pantalla de inicio”.\n4. Tocá “Añadir”.");
+      if (!installEvt) showMessage("Para instalarla en el iPhone:\n\n1. Abrí esta página en Safari.\n2. Tocá el botón Compartir (el cuadrado con la flecha hacia arriba).\n3. Elegí “Añadir a pantalla de inicio”.\n4. Tocá “Añadir”.");
     });
   }
   if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
