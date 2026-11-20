@@ -64,7 +64,7 @@
   }
 
   function parseOc(pages) {
-    const out = { ocNumber: "", emission: "", items: [], totals: { subtotal: null, discount: 0, total: null, ivas: [] }, warnings: [] };
+    const out = { ocNumber: "", emission: "", delivery: "", address: "", deliveryDate: "", items: [], totals: { subtotal: null, discount: 0, total: null, ivas: [] }, warnings: [] };
     pages.forEach((pg, pageIdx) => {
       const rows = groupRows(pg.items);
       let cur = null, descX = null, lastY = null;       // cur = último producto leído (para unir líneas partidas)
@@ -73,6 +73,9 @@
         let m;
         if (!out.ocNumber && (m = /Orden de compra\D*?(\d+)\s*$/i.exec(joined))) out.ocNumber = m[1];
         if (!out.emission && (m = /Emisi[oó]n:\s*([\d/-]+)/i.exec(joined))) out.emission = m[1];
+        if (!out.delivery && /^Entrega:?$/i.test(texts[0]) && texts[1]) out.delivery = texts[1];
+        if (!out.address && /^Direcci[oó]n:?$/i.test(texts[0]) && texts[1]) out.address = texts[1];
+        if (!out.deliveryDate && (m = /Entrega el D[ií]a\s+(\d{1,2})[-/](\d{1,2})[-/](\d{4})/i.exec(joined))) out.deliveryDate = m[1].padStart(2, "0") + "-" + m[2].padStart(2, "0") + "-" + m[3];
 
         // Fila de producto: cantidad · presentación · descripción · … · precio · importe
         const n = texts.length;

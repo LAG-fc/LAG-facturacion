@@ -44,7 +44,7 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg>Instalar</button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v6.0</span>
+      <span class="ver" id="verTag">v6.2</span>
     </div>
   </header>
 
@@ -122,8 +122,12 @@
         <h2>Órdenes de compra</h2>
         <p class="hint">Cargá la OC del cliente, pegá las entregas del período desde Excel y obtené la tabla de facturación.</p>
       </div>
-      <button id="ocAddBtn" type="button" class="btn primary"><svg class="i"><use href="#i-plus"/></svg>Agregar OC</button>
+      <div class="oc-head-btns">
+        <button id="ocMonthBtn" type="button" class="btn primary"><svg class="i"><use href="#i-download"/></svg>Buscar OC del mes</button>
+        <button id="ocAddBtn" type="button" class="btn secondary"><svg class="i"><use href="#i-plus"/></svg>Agregar OC</button>
+      </div>
     </section>
+    <p id="ocExcelInfo" class="badge good" hidden></p>
 
     <div id="ocList" class="oc-list"></div>
     <section id="ocEmpty" class="card empty">
@@ -146,9 +150,28 @@
       </section>
 
       <section class="card oc-step">
-        <div class="oc-step-head"><span class="step-n">2</span><h3>Entregas del período</h3></div>
-        <p class="hint">Copiá las celdas desde Excel y pegalas acá. <b>Primera columna:</b> descripción del producto. <b>Siguientes columnas:</b> cantidad entregada cada día. Las celdas vacías cuentan como 0.</p>
-        <textarea id="ocPaste" rows="8" spellcheck="false" placeholder="Pegá acá la tabla copiada de Excel…"></textarea>
+        <div class="oc-step-head"><span class="step-n">2</span><h3>Cliente y entregas del período</h3></div>
+        <div class="client-row">
+          <label class="field-inline">Cliente de esta OC
+            <select id="ocClient"></select>
+          </label>
+          <label class="field-inline">Período a facturar
+            <select id="ocPeriod">
+              <option value="">— elegir —</option>
+              <option value="q1">1ª quincena (días 1 al 15)</option>
+              <option value="q2">2ª quincena (día 16 en adelante)</option>
+              <option value="mes">Mes completo</option>
+              <option value="custom">Otros días…</option>
+            </select>
+          </label>
+          <span id="ocCustom" class="custom-days" hidden>
+            <label class="field-inline">Desde el día<input id="ocFrom" type="text" inputmode="numeric" maxlength="2"></label>
+            <label class="field-inline">Hasta el día<input id="ocTo" type="text" inputmode="numeric" maxlength="2"></label>
+          </span>
+        </div>
+        <p id="ocAutoInfo" class="hint"></p>
+        <p class="hint"><b>Opcional:</b> si preferís no usar el Excel de Despachos, copiá las celdas desde Excel y pegalas acá (tiene prioridad). <b>Primera columna:</b> descripción del producto. <b>Siguientes columnas:</b> cantidad entregada cada día.</p>
+        <textarea id="ocPaste" rows="6" spellcheck="false" placeholder="Pegá acá la tabla copiada de Excel…"></textarea>
         <div class="row-inline"><button id="ocPasteClear" type="button" class="btn ghost small danger-text">Borrar lo pegado</button><span id="ocPasteInfo" class="hint"></span></div>
         <details id="ocReviewBox" class="review" hidden>
           <summary id="ocReviewSummary">Coincidencias con la OC</summary>
@@ -171,6 +194,23 @@
       </section>
     </div>
   </main>
+
+  <!-- Buscar OC del mes en Drive -->
+  <dialog id="ocMonthDialog" class="dlg">
+    <form method="dialog" id="ocMonthForm" novalidate>
+      <h3>Buscar las OC del mes</h3>
+      <p class="hint">Busca en Drive: Compartido conmigo / Facturación / <b>mes</b> / Cook Master. Trae todas las órdenes de compra y el Excel de Despachos.</p>
+      <label class="field">Mes
+        <input id="ocMonthInput" type="text" list="ocMonthList" autocomplete="off" spellcheck="false" placeholder="Ej.: Noviembre">
+        <datalist id="ocMonthList"><option value="Enero"><option value="Febrero"><option value="Marzo"><option value="Abril"><option value="Mayo"><option value="Junio"><option value="Julio"><option value="Agosto"><option value="Septiembre"><option value="Octubre"><option value="Noviembre"><option value="Diciembre"></datalist>
+      </label>
+      <div id="ocMonthProgress" class="month-progress" role="status"></div>
+      <div class="dialog-actions">
+        <button type="button" id="ocMonthCancel" class="btn secondary">Cerrar</button>
+        <button type="submit" id="ocMonthGo" class="btn primary">Buscar</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Agregar OC -->
   <dialog id="ocAddDialog" class="dlg">
@@ -261,7 +301,7 @@
       <p class="hint">Con el puente configurado, “Guardar PDF” lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto; ya no se descarga en el dispositivo. Sin puente, el PDF se descarga como antes.</p>
     </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">6.0</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">6.2</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
@@ -274,6 +314,8 @@
   <script src="period.js"></script>
   <script src="pdftext.js"></script>
   <script src="ocparse.js"></script>
+  <script src="xlsx.js"></script>
+  <script src="despachos.js"></script>
   <script src="pdf.js"></script>
   <script src="scanner.js"></script>
   <script src="oc.js"></script>

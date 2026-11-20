@@ -311,3 +311,15 @@ textarea { resize: vertical; line-height: 1.5; font-family: var(--sans); }
 }
 #ocReviewTable select { max-width: 320px; text-overflow: ellipsis; }
 @media (max-width: 640px) { #ocReviewTable select { max-width: 170px; } }
+
+/* ---------- v6.1: búsqueda del mes y cliente ---------- */
+.oc-head-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.client-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin: 6px 0 4px; }
+.client-row select { min-width: 210px; }
+.client-row select.bad { border-color: var(--danger); }
+.custom-days { display: inline-flex; gap: 10px; }
+.custom-days input { width: 70px; }
+.month-progress { margin-top: 12px; font-size: 13.5px; line-height: 1.5; max-height: 40vh; overflow: auto; }
+.month-progress .ok-line { color: var(--ok); font-weight: 600; }
+.month-progress .bad-line { color: var(--danger); }
+@media (max-width: 640px) { .client-row select { min-width: 0; width: 100%; } .client-row .field-inline { flex: 1 1 100%; } .oc-head-btns .btn { flex: 1; justify-content: center; } }

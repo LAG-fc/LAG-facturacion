@@ -1,4 +1,4 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 6.0
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 6.2
 =======================================================
 
 QUÉ HACE
@@ -35,6 +35,16 @@ QUÉ HACE
      para que lo elijas (la página se acuerda de lo que elegiste para las próximas OC).
   4) "Copiar tabla" copia DESCRIPCION, CANTIDAD, PRECIO e IVA listos para pegar en Excel.
   Las OC cargadas quedan guardadas en este navegador. Archivos nuevos: pdftext.js, ocparse.js, oc.js (subirlos a GitHub).
+- BUSCAR LAS OC DEL MES EN DRIVE (v6.1): en "Órdenes de compra" > "Buscar OC del mes": escribís el mes (ej. Noviembre) y la página trae,
+  desde Compartido conmigo / Facturación / <Mes> / Cook Master, todas las OC (PDF) y el Excel de Despachos (el que tenga "Despacho"
+  en el nombre; si no, el más reciente). Hace falta ACTUALIZAR EL PUENTE a la versión 2 (puente-google/INSTRUCCIONES-PUENTE.txt).
+  - Cliente: se sugiere por el "Entrega:" que trae la OC (Centro de Contención, Penal de Menores, La Plata, UP 59, UP 60, Alcaidía)
+    y se puede cambiar en cada OC; lo que elegís queda recordado para el mes siguiente.
+  - Hojas del Excel: CC Malvinas (Centro de Contención), CS Malvinas (Penal de Menores), SAE La Plata (La Plata) y Merlo
+    (UP 59, UP 60 y Alcaidía: se busca el título de cada bloque dentro de la hoja).
+  - Período: se propone la quincena de la fecha de entrega de la OC; se puede elegir 1ª quincena, 2ª quincena, mes completo u otros días.
+  - Si algo del Excel no se lee bien, se puede pegar la tabla a mano (tiene prioridad) y avisarme para ajustar la lectura.
+  Archivos nuevos: xlsx.js y despachos.js (subirlos a GitHub).
 - La lista de productos se edita en Ajustes (uno por línea).
 - Ya NO lee texto automáticamente (se quitó Google Cloud Vision). No hace falta ninguna clave.
 
@@ -45,7 +55,7 @@ CÓMO ACTUALIZAR EN GITHUB (si ya la publicaste)
 3. "Add file" > "Upload files" y arrastrá TODO el contenido de esta carpeta (incluida la carpeta icons).
    Archivos nuevos: period.js, pdftext.js, ocparse.js, oc.js (obligatorios). La carpeta puente-google NO se sube a GitHub (es para Google Apps Script). Los demás reemplazan a los que tenías.
 4. "Commit changes". En 1–2 minutos se publica.
-5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v6.0.
+5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v6.2.
    Si la tenías instalada con el ícono viejo, el ícono nuevo puede tardar en cambiar (o reinstalala).
 
 RECOMENDACIÓN
@@ -58,3 +68,11 @@ PUBLICAR DESDE CERO (primera vez)
 3. Settings > Pages > Source: "Deploy from a branch", rama main, carpeta /(root) > Save.
 4. La dirección queda como https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/
 5. Abrirla en el celular y "Añadir a pantalla de inicio" (iPhone) o "Instalar" (Android/PC).
+
+
+NOVEDAD v6.2 — LECTURA CORRECTA DEL EXCEL DE DESPACHOS
+- Para cada cliente se lee la hoja ANTERIOR a la que lo identifica (Hoja4 para CC Malvinas, Hoja5 para CS Malvinas).
+  Se usan las columnas de cada día y los encabezados "total quincena" (días 1-15 y 16-30). Funciona con quincena, mes, semana o días a elección.
+- Alcaidía, UP 59, UP 60 y La Plata se toman como PAN MIGNON BLANCO. Sus cantidades diarias se leen de la lista de la hoja del cliente
+  (Merlo / SAE La Plata), porque la hoja anterior solo trae totales sueltos. Si en el período aparece otro producto, la página avisa.
+- Para el mes completo de Merlo se compara con el total de la hoja anterior (Hoja3) y se avisa si no coincide.
