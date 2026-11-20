@@ -28,6 +28,8 @@
     <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
   </svg>
 
@@ -42,11 +44,16 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg>Instalar</button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v5.2</span>
+      <span class="ver" id="verTag">v6.0</span>
     </div>
   </header>
 
-  <main class="layout">
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Secciones">
+    <button type="button" class="tab" role="tab" id="tabRemitos" data-view="remitos" aria-selected="true"><svg class="i"><use href="#i-camera"/></svg>Remitos</button>
+    <button type="button" class="tab" role="tab" id="tabOc" data-view="oc" aria-selected="false"><svg class="i"><use href="#i-file"/></svg>Órdenes de compra</button>
+  </nav>
+
+  <main class="layout" id="remitosView">
     <section class="card scan">
       <div class="period-bar">
         <div class="seg" id="periodSeg" role="radiogroup" aria-label="Tipo de período">
@@ -107,6 +114,83 @@
       </div>
     </aside>
   </main>
+
+  <!-- ===== Sección: órdenes de compra (independiente de la de remitos) ===== -->
+  <main class="oc-view" id="ocView" hidden>
+    <section class="card oc-head">
+      <div>
+        <h2>Órdenes de compra</h2>
+        <p class="hint">Cargá la OC del cliente, pegá las entregas del período desde Excel y obtené la tabla de facturación.</p>
+      </div>
+      <button id="ocAddBtn" type="button" class="btn primary"><svg class="i"><use href="#i-plus"/></svg>Agregar OC</button>
+    </section>
+
+    <div id="ocList" class="oc-list"></div>
+    <section id="ocEmpty" class="card empty">
+      <svg class="i big"><use href="#i-file"/></svg>
+      <p>Todavía no cargaste ninguna OC.</p>
+      <small>Tocá “Agregar OC”, escribí el número y subí el PDF de la orden de compra.</small>
+    </section>
+
+    <div id="ocDetail" hidden>
+      <section class="card oc-step">
+        <div class="oc-step-head"><span class="step-n">1</span><h3>Productos de la OC <b id="ocTitle"></b></h3></div>
+        <p class="hint" id="ocMeta"></p>
+        <div id="ocIvaBadge" class="badge"></div>
+        <div class="table-wrap">
+          <table class="oc-table" id="ocItemsTable">
+            <thead><tr><th>DESCRIPCIÓN</th><th class="num">PRECIO (sin IVA)</th><th class="ctr">IVA</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card oc-step">
+        <div class="oc-step-head"><span class="step-n">2</span><h3>Entregas del período</h3></div>
+        <p class="hint">Copiá las celdas desde Excel y pegalas acá. <b>Primera columna:</b> descripción del producto. <b>Siguientes columnas:</b> cantidad entregada cada día. Las celdas vacías cuentan como 0.</p>
+        <textarea id="ocPaste" rows="8" spellcheck="false" placeholder="Pegá acá la tabla copiada de Excel…"></textarea>
+        <div class="row-inline"><button id="ocPasteClear" type="button" class="btn ghost small danger-text">Borrar lo pegado</button><span id="ocPasteInfo" class="hint"></span></div>
+        <details id="ocReviewBox" class="review" hidden>
+          <summary id="ocReviewSummary">Coincidencias con la OC</summary>
+          <div class="table-wrap"><table class="oc-table" id="ocReviewTable"><thead><tr><th>EN TU TABLA</th><th class="num">SUMA</th><th>PRODUCTO DE LA OC</th></tr></thead><tbody></tbody></table></div>
+        </details>
+      </section>
+
+      <section class="card oc-step">
+        <div class="oc-step-head"><span class="step-n">3</span><h3>Tabla de facturación</h3>
+          <button id="ocCopyBtn" type="button" class="btn soft small"><svg class="i"><use href="#i-copy"/></svg>Copiar tabla</button></div>
+        <div id="ocWarn"></div>
+        <div class="table-wrap">
+          <table class="oc-table" id="ocInvTable">
+            <thead><tr><th>DESCRIPCIÓN</th><th class="num">CANTIDAD</th><th class="num">PRECIO</th><th class="ctr">IVA</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="ocInvTotals" class="inv-totals"></div>
+        <p id="ocOmitted" class="hint"></p>
+      </section>
+    </div>
+  </main>
+
+  <!-- Agregar OC -->
+  <dialog id="ocAddDialog" class="dlg">
+    <form method="dialog" id="ocAddForm" novalidate>
+      <h3>Agregar orden de compra</h3>
+      <label class="field">Número de OC
+        <input id="ocAddNumber" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Ej.: 93031" maxlength="12">
+      </label>
+      <label class="dropzone disabled" id="ocDrop">
+        <svg class="i big"><use href="#i-upload"/></svg>
+        <strong id="ocDropTitle">Escribí primero el número de OC</strong>
+        <small id="ocDropSub">Después podés elegir el PDF o arrastrarlo hasta acá.</small>
+        <input type="file" id="ocFile" accept="application/pdf,.pdf" hidden disabled>
+      </label>
+      <p id="ocAddMsg" class="err" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" id="ocAddCancel" class="btn secondary">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Avisos y preguntas -->
   <dialog id="msgDialog" class="dlg small-dlg">
@@ -177,7 +261,7 @@
       <p class="hint">Con el puente configurado, “Guardar PDF” lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto; ya no se descarga en el dispositivo. Sin puente, el PDF se descarga como antes.</p>
     </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">5.2</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">6.0</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
@@ -188,7 +272,10 @@
   <script src="crop.js"></script>
   <script src="enhance.js"></script>
   <script src="period.js"></script>
+  <script src="pdftext.js"></script>
+  <script src="ocparse.js"></script>
   <script src="pdf.js"></script>
   <script src="scanner.js"></script>
+  <script src="oc.js"></script>
 </body>
 </html>

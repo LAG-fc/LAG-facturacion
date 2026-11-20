@@ -1,4 +1,4 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 5.2
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 6.0
 =======================================================
 
 QUÉ HACE
@@ -25,6 +25,16 @@ QUÉ HACE
   Asunto: "Remitos OC 93035 – período 15 al 21". Mensaje: saludo según la hora (Buenos días / Buenas tardes / Buenas noches),
   "adjunto remitos correspondientes a la OC 93035 (periodo 15/11 al 21/11)." y "Saludos.".
   Pasos de configuración: puente-google/INSTRUCCIONES-PUENTE.txt, y después Ajustes > Puente a Google Drive y Gmail.
+- SECCIÓN "ÓRDENES DE COMPRA" (v6.0, pestaña arriba; es independiente de "Remitos": al entrar se apaga la cámara):
+  1) "Agregar OC": escribís el número y subís (o arrastrás) el PDF de la OC. Se lee el TEXTO del PDF (sin Cloud Vision: el PDF ya trae
+     el texto, así que las cifras salen exactas, gratis y sin internet). Se guardan descripción, precio sin IVA e IVA de cada producto.
+  2) El IVA de cada producto se deduce de los importes de IVA de la OC (busca qué productos suman la base de cada IVA). Se puede
+     corregir a mano en la columna IVA; la página avisa si con tu selección los totales no coinciden con el PDF.
+  3) Pegás las entregas copiadas de Excel (1.ª columna descripción; las demás, cantidad de cada día). Se suman las columnas,
+     se cruzan con la OC por nombre y las filas con suma 0 no aparecen. Lo que no se pueda asignar solo queda marcado en rojo
+     para que lo elijas (la página se acuerda de lo que elegiste para las próximas OC).
+  4) "Copiar tabla" copia DESCRIPCION, CANTIDAD, PRECIO e IVA listos para pegar en Excel.
+  Las OC cargadas quedan guardadas en este navegador. Archivos nuevos: pdftext.js, ocparse.js, oc.js (subirlos a GitHub).
 - La lista de productos se edita en Ajustes (uno por línea).
 - Ya NO lee texto automáticamente (se quitó Google Cloud Vision). No hace falta ninguna clave.
 
@@ -33,9 +43,9 @@ CÓMO ACTUALIZAR EN GITHUB (si ya la publicaste)
 2. BORRÁ estos archivos viejos (ya no se usan): ocr.js, layout.js, rows.js
    (se abren, tocás los tres puntitos > "Delete file" > "Commit changes").
 3. "Add file" > "Upload files" y arrastrá TODO el contenido de esta carpeta (incluida la carpeta icons).
-   Archivos nuevos desde la v5.1: period.js (obligatorio). La carpeta puente-google NO se sube a GitHub (es para Google Apps Script). Los demás reemplazan a los que tenías.
+   Archivos nuevos: period.js, pdftext.js, ocparse.js, oc.js (obligatorios). La carpeta puente-google NO se sube a GitHub (es para Google Apps Script). Los demás reemplazan a los que tenías.
 4. "Commit changes". En 1–2 minutos se publica.
-5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v5.2.
+5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v6.0.
    Si la tenías instalada con el ícono viejo, el ícono nuevo puede tardar en cambiar (o reinstalala).
 
 RECOMENDACIÓN

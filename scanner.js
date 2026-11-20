@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "5.2";
+  const APP_VERSION = "6.0";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 
@@ -30,6 +30,7 @@
   let nextPageId = 1;
   let epoch = 0;                    // sube cada vez que se vacía todo: lo que estaba en proceso se descarta
   let grabbing = false;
+  let suspended = false;            // true mientras se está en la sección "Órdenes de compra": la cámara queda apagada
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const toBlob = (canvas, q = 0.9) => new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
@@ -73,6 +74,7 @@
 
   // ---------- Cámara ----------
   async function startCamera(deviceId) {
+    if (suspended) return;
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = null;
     cameraMsg.classList.remove("hidden");
@@ -86,6 +88,7 @@
         },
         audio: false
       });
+      if (suspended) { stream.getTracks().forEach((t) => t.stop()); stream = null; return; }   // se cambió de sección mientras arrancaba
       stillOk = null;
       video.srcObject = stream;
       await video.play();
@@ -109,7 +112,7 @@
     return !!(t && t.readyState === "live" && !video.paused && !video.ended && video.readyState >= 2);
   }
   async function ensureCamera() {
-    if (camRestarting) return;
+    if (suspended || camRestarting) return;
     if (cameraAlive()) return;
     camRestarting = true;
     try {
@@ -119,7 +122,7 @@
     camRestarting = false;
   }
   function watchCamera() {
-    if (document.hidden) return;
+    if (suspended || document.hidden) return;
     if (cameraAlive()) { camBadTicks = 0; return; }
     if (++camBadTicks >= 5) { camBadTicks = 0; ensureCamera(); }   // ~2 segundos con la cámara trabada
   }
@@ -187,7 +190,7 @@
 
   function liveLoop() {
     try {
-      if (autoCropChk.checked && video.videoWidth && !document.hidden) {
+      if (!suspended && autoCropChk.checked && video.videoWidth && !document.hidden) {
         if (!grabbing) {
           const quad = detectQuad(video, video.videoWidth, video.videoHeight);
           stable = quad ? stable + 1 : 0;
@@ -457,18 +460,19 @@
   let dragTimer = null;
   function resetDragState() { clearTimeout(dragTimer); dragTimer = null; pagesPanel.classList.remove("dragover"); }
   function markDrag() { pagesPanel.classList.add("dragover"); clearTimeout(dragTimer); dragTimer = setTimeout(resetDragState, 250); }
-  window.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); markDrag(); });
-  window.addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; markDrag(); });
+  window.addEventListener("dragenter", (e) => { if (suspended || !hasFiles(e)) return; e.preventDefault(); markDrag(); });
+  window.addEventListener("dragover", (e) => { if (suspended || !hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; markDrag(); });
   window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) resetDragState(); });
   window.addEventListener("dragend", resetDragState);
   window.addEventListener("drop", (e) => {
-    if (!hasFiles(e)) return;
+    if (suspended || !hasFiles(e)) return;
     e.preventDefault();
     resetDragState();
     importFiles(e.dataTransfer.files);
   });
 
   window.addEventListener("keydown", (e) => {
+    if (suspended) return;
     const tag = (e.target && e.target.tagName) || "";
     if (e.code === "Space" && !anyDialogOpen() && !["SELECT", "INPUT", "TEXTAREA", "BUTTON"].includes(tag)) { e.preventDefault(); capture(); }
   });
@@ -947,6 +951,21 @@
   updateBusyUI();
   startCamera();
   liveLoop();
+
+  // ---------- Cambio de sección (lo usa oc.js) ----------
+  // Las dos secciones son excluyentes: al entrar a "Órdenes de compra" se apaga la cámara y se desactivan
+  // la barra espaciadora y el arrastrar-y-soltar de remitos; al volver, la cámara se enciende de nuevo.
+  window.RemitosApp = {
+    setActive(on) {
+      if (on) { if (!suspended) return; suspended = false; startCamera(cameraSelect.value || undefined); }
+      else {
+        suspended = true;
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        stream = null; video.srcObject = null; resetDragState();
+      }
+    },
+    askConfirm, showMessage
+  };
 
   // ---------- Instalación como aplicación ----------
   const installBtn = $("installBtn");
