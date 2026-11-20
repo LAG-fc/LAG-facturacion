@@ -65,6 +65,28 @@
     return best;
   }
 
+  // Mejor separación entre renglones (pitch) tomando la línea de abajo como referencia; devuelve {top,pitch,score}
+  function periodicTop(g, w, h, xa, xb, yBottom) {
+    if (xb - xa < 8) return null;
+    const prof = new Float32Array(h);
+    for (let y = 0; y < h; y++) {
+      let c = 0;
+      for (let x = xa; x <= xb; x++) if (g[y * w + x] < 185) c++;
+      prof[y] = c / (xb - xa + 1);
+    }
+    const at = (y) => { const yi = Math.round(y); let m = 0; for (let d = -1; d <= 1; d++) { const v = prof[Math.min(h - 1, Math.max(0, yi + d))]; if (v > m) m = v; } return m; };
+    let best = null;
+    for (let p = 0.017 * h; p <= 0.027 * h; p += 0.1) {
+      let sum = 0;
+      for (let k = 1; k <= 18; k++) sum += Math.min(0.6, at(yBottom - k * p));
+      const sc = sum / 18;
+      if (!best || sc > best.score) best = { pitch: p, score: sc };
+    }
+    if (!best || best.score < 0.12) return null;
+    best.top = yBottom - 19 * best.pitch;
+    return best;
+  }
+
   // img: {data,width,height} de la hoja ya enderezada (conviene la versión mejorada).
   function findTable(img) {
     const { g, w, h } = toSmallGray(img);
@@ -120,9 +142,32 @@
     const upper = hc.filter((c) => c[0] <= ya + 0.14 * h && c !== bottom);
     if (upper.length >= 2) header = upper[1];
     else if (upper.length === 1 && upper[0][0] > ya + 0.02 * h) header = upper[0];
-    const foundHeader = !!header, foundBottom = !!bottom;
-    const y0px = foundHeader ? header[1] + 1 : ya + 0.057 * (yb - ya);
+    let foundHeader = !!header;
+    const foundBottom = !!bottom;
+    let y0px = foundHeader ? header[1] + 1 : ya + 0.057 * (yb - ya);
     const y1px = foundBottom ? bottom[0] - 1 : yb - 2;
+
+    // 4) Control con los renglones punteados: la tabla tiene SIEMPRE 19 filas parejas. Desde la línea de
+    //    abajo se busca la separación (pitch) que mejor cae sobre los renglones; 19 pitch más arriba debe estar
+    //    la línea de los títulos. Si la que se detectó no coincide (borrosa, cortada), se corrige.
+    const per = periodicTop(g, w, h, xa, xb, y1px);
+    let periodic = false;
+    if (per) {
+      const yTop = per.top, p = per.pitch;
+      if (!foundHeader || Math.abs(y0px - yTop) > 0.5 * p) {
+        // línea sólida de títulos cerca de donde debe estar
+        let near = null, nd = 1e9;
+        for (let y = Math.max(0, Math.round(yTop - 0.4 * p)); y <= Math.min(h - 1, Math.round(yTop + 0.4 * p)); y++) {
+          if (hRun(dark, w, h, y, xa, xb) >= 0.6 * (xb - xa)) {
+            let e = y; while (e + 1 < h && hRun(dark, w, h, e + 1, xa, xb) >= 0.6 * (xb - xa)) e++;
+            if (Math.abs(e + 1 - yTop) < nd) { nd = Math.abs(e + 1 - yTop); near = e; }
+            y = e;
+          }
+        }
+        y0px = near !== null ? near + 1 : yTop;
+        foundHeader = true; periodic = true;
+      }
+    }
 
     const bandH = (y1px - y0px) / h, sepPos = sepLeft / w;
     if (sepPos < 0.14 || sepPos > 0.31) return fail("separador en posición rara");
@@ -131,7 +176,7 @@
     const mx = 0.004 * w;
     return {
       x0: (frameRight + mx + 1) / w, x1: (sepLeft - mx) / w, y0: y0px / h, y1: y1px / h,
-      ok: true, score, found: { frame: foundFrame, header: foundHeader, bottom: foundBottom }
+      ok: true, score, found: { frame: foundFrame, header: foundHeader, bottom: foundBottom, periodic }
     };
   }
 

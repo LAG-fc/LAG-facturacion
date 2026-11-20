@@ -1,5 +1,7 @@
 (() => {
   "use strict";
+  const APP_VERSION = "4.3";
+  document.addEventListener("DOMContentLoaded", () => { const a = document.getElementById("verTag"), b = document.getElementById("verLabel"); if (a) a.textContent = "v" + APP_VERSION; if (b) b.textContent = APP_VERSION; });
   const $ = (id) => document.getElementById(id);
   const video = $("video"), overlay = $("overlay"), videoWrap = $("videoWrap");
   const cameraSelect = $("cameraSelect"), filterSelect = $("filterSelect"), autoCropChk = $("autoCrop");
@@ -9,14 +11,14 @@
   const totalsTable = $("totalsTable"), totalsEmpty = $("totalsEmpty");
   const nameDialog = $("nameDialog"), nameForm = $("nameForm"), nameInput = $("nameInput"), cancelName = $("cancelName");
   const settingsDialog = $("settingsDialog"), keyInput = $("keyInput"), keyMsg = $("keyMsg");
-  const sensSelect = $("sensSelect"), decSelect = $("decSelect");
+  const sensSelect = $("sensSelect");
   const uploadBtn = $("uploadBtn"), fileInput = $("fileInput"), pagesPanel = $("pagesPanel");
   const catalogInput = $("catalogInput"), hiResChk = $("hiResChk");
   const editWrap = $("editWrap");
   const editDialog = $("editDialog"), editRowsEl = $("editRows"), editImg = $("editImg"), editNum = $("editNum"), editErr = $("editErr");
 
   const DEFAULTS = {
-    apiKey: "", sensitivity: "normal", decimals: 2, autoCrop: true,
+    apiKey: "", sensitivity: "normal", autoCrop: true,
     filterMode: "mejorado", hiRes: true, catalog: OCR.DEFAULT_CATALOG.join("\n"), catalogVersion: 5
   };
   let settings = { ...DEFAULTS };
@@ -167,14 +169,15 @@
   // ---------- Recuadros en vivo, en orden: 1) hoja  2) columna de cantidades  3) filas ----------
   const COLORS = { page: "#2ee06b", table: "#4da3ff", rows: "#ffd24d", filled: "#ff9d2e" };
   const stepsBadge = $("stepsBadge");
-  const live = { table: null, stable: 0, analyzing: false, shown: 0 };
+  const live = { an: null, stable: 0, analyzing: false, shown: 0, ticks: 0, runs: 0 };
   const analysisCanvas = document.createElement("canvas");
   const actx = analysisCanvas.getContext("2d", { willReadFrequently: true });
 
-  // Ubica la tabla en un cuadro del video (se hace cada ~1,5 s, no en cada cuadro)
+  // Con un cuadro del video: ubica la tabla, ajusta las 19 filas a los renglones y calcula la probabilidad
+  // de que cada fila tenga un número (el mismo cálculo que se hace al sacar la foto).
   function analyzeLive(quad) {
     const vw = video.videoWidth, vh = video.videoHeight;
-    const s = Math.min(1, 900 / Math.max(vw, vh));
+    const s = Math.min(1, 1600 / Math.max(vw, vh));
     analysisCanvas.width = Math.round(vw * s); analysisCanvas.height = Math.round(vh * s);
     actx.drawImage(video, 0, 0, analysisCanvas.width, analysisCanvas.height);
     const src = actx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
@@ -183,26 +186,33 @@
     const pc = page.getContext("2d", { willReadFrequently: true });
     const d = pc.getImageData(0, 0, page.width, page.height);
     Enhance.enhance(d); pc.putImageData(d, 0, 0);
-    const o = bestOrientation(page);
-    return { table: o.table, deg: o.deg, t: Date.now() };
+    // cada 4 análisis se vuelven a probar todos los giros; el resto, el que ya se conocía
+    const hint = live.an && live.runs % 4 !== 0 ? live.an.deg : undefined;
+    const o = bestOrientation(page, hint);
+    const table = o.table;
+    const strip = makeStripCanvas(table, o.deg ? rotateCanvas(analysisCanvas, o.deg) : analysisCanvas, Crop.rotateQuad(q, o.deg / 90));
+    const m = measureStrip(strip);
+    return { table, deg: o.deg, rowFracs: m.rowFracs, rowMeta: m.rowMeta, t: Date.now() };
   }
 
   function maybeAnalyzeLive(quad) {
     if (live.analyzing || live.stable < 2) return;
-    if (live.table && Date.now() - live.table.t < 1500) return;
+    if (live.an && Date.now() - live.an.t < 700) return;
     live.analyzing = true;
     setTimeout(() => {
-      try { live.table = analyzeLive(quad); } catch (e) { live.table = null; }
+      try { live.an = analyzeLive(quad); live.runs++; } catch (e) { console.warn("análisis en vivo:", e); live.an = null; }
       live.analyzing = false;
     }, 0);
   }
 
-  function setSteps(n) {
-    if (live.shown === n) return;
-    live.shown = n;
+  function setSteps(n, approx) {
+    const key = n + (approx ? 0.5 : 0);
+    if (live.shown === key) return;
+    live.shown = key;
     const t = ["", "①", "①②", "①②③"][n];
     stepsBadge.hidden = n === 0;
-    stepsBadge.textContent = n === 0 ? "" : t + " " + ["", "Hoja", "Hoja → Cantidades", "Hoja → Cantidades → Filas"][n];
+    stepsBadge.textContent = n === 0 ? "" : t + " " + ["", "Hoja", "Hoja → Cantidades", "Hoja → Cantidades → Filas"][n] +
+      (approx && n >= 2 ? " (posición estimada)" : "");
   }
 
   function poly(ctx, pts, close) {
@@ -227,37 +237,51 @@
     poly(ctx, quad.map(scr), true);
     ctx.fillStyle = "rgba(46,158,91,.14)"; ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = COLORS.page; ctx.stroke();
-    let steps = 1;
+    let steps = 1, approx = false;
 
-    const lt = live.table;
-    if (lt && lt.table && lt.table.ok && live.stable >= 3) {
+    const an = live.an;
+    if (an && an.table && live.stable >= 2) {
+      live.ticks++;
+      approx = !an.table.ok;
       // 2) recuadro interior de la columna de cantidades
-      const rq = Crop.rotateQuad(quad, lt.deg / 90);
-      const T = lt.table;
+      const rq = Crop.rotateQuad(quad, an.deg / 90);
+      const T = an.table;
       const at = (fx, fy) => scr(Crop.mapPoint(rq, fx, fy));
       const box = [at(T.x0, T.y0), at(T.x1, T.y0), at(T.x1, T.y1), at(T.x0, T.y1)];
       poly(ctx, box, true);
       ctx.fillStyle = "rgba(77,163,255,.16)"; ctx.fill();
-      ctx.lineWidth = 2.5; ctx.strokeStyle = COLORS.table; ctx.stroke();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = COLORS.table;
+      ctx.setLineDash(approx ? [8, 6] : []); ctx.stroke(); ctx.setLineDash([]);
       steps = 2;
-      if (live.stable >= 5) {
-        // 3) las filas (la grilla exacta se ajusta a los renglones al sacar la foto)
-        const N = Rows.N_ROWS;
+      if (live.ticks >= 2 && an.rowFracs && an.rowFracs.length > 1) {
+        // 3) las 19 filas, siguiendo la perspectiva de la hoja; las que tienen número, en naranja
+        const fr = an.rowFracs, N = fr.length - 1, H = T.y1 - T.y0;
+        const yAt = (k) => T.y0 + H * fr[k];
+        for (const r of an.rowMeta || []) {
+          if (!r.nonEmpty) continue;
+          const i = r.index - 1;
+          poly(ctx, [at(T.x0, yAt(i)), at(T.x1, yAt(i)), at(T.x1, yAt(i + 1)), at(T.x0, yAt(i + 1))], true);
+          ctx.fillStyle = r.sure ? "rgba(255,157,46,.40)" : "rgba(255,157,46,.20)"; ctx.fill();
+        }
         ctx.strokeStyle = COLORS.rows; ctx.lineWidth = 1.2; ctx.fillStyle = COLORS.rows;
         ctx.font = "bold 11px system-ui, sans-serif";
         for (let i = 0; i <= N; i++) {
-          const fy = T.y0 + (T.y1 - T.y0) * (i / N);
-          const a = at(T.x0, fy), b = at(T.x1, fy);
-          poly(ctx, [a, b], false); ctx.stroke();
+          poly(ctx, [at(T.x0, yAt(i)), at(T.x1, yAt(i))], false); ctx.stroke();
           if (i < N) {
-            const m = at(T.x0, T.y0 + (T.y1 - T.y0) * ((i + 0.5) / N));
+            const m = at(T.x0, (yAt(i) + yAt(i + 1)) / 2);
             ctx.fillText(String(i + 1), m.x + 3, m.y + 4);
           }
         }
+        for (const r of an.rowMeta || []) {     // probabilidad de que la fila tenga un número
+          if (r.p < 0.15) continue;
+          const i = r.index - 1, m = at(T.x1, (yAt(i) + yAt(i + 1)) / 2);
+          ctx.fillStyle = r.nonEmpty ? COLORS.filled : "rgba(255,255,255,.6)";
+          ctx.fillText(Math.round(r.p * 100) + "%", m.x + 4, m.y + 4);
+        }
         steps = 3;
       }
-    }
-    setSteps(steps);
+    } else if (!an) { live.ticks = 0; }
+    setSteps(steps, approx);
   }
 
   function liveLoop() {
@@ -265,7 +289,7 @@
       if (autoCropChk.checked && video.videoWidth && !capturing && !document.hidden) {
         const quad = detectQuad(video, video.videoWidth, video.videoHeight);
         if (quad) { live.stable++; maybeAnalyzeLive(quad); }
-        else { live.stable = 0; live.table = null; }
+        else { live.stable = 0; live.an = null; live.ticks = 0; }
         drawLive(quad);
       } else {
         live.stable = 0;
@@ -375,9 +399,13 @@
 
   // Busca la tabla en la hoja. Una hoja derecha tiene la columna de cantidades a la izquierda; si la
   // hoja está de costado o al revés, se prueban los giros posibles y gana el que muestra la tabla bien.
-  function bestOrientation(enh) {
+  function bestOrientation(enh, hintDeg) {
     const portrait = enh.height >= enh.width;
     const options = portrait ? [0, 180] : [90, 270];
+    if (hintDeg !== undefined && options.includes(hintDeg)) {    // se prueba primero el giro que ya se sabía
+      const r = Layout.findTable(imageDataOf(rotateCanvas(enh, hintDeg)));
+      if (r.ok) return { deg: hintDeg, score: r.score, table: r };
+    }
     let best = null;
     for (const deg of options) {
       const r = Layout.findTable(imageDataOf(rotateCanvas(enh, deg)));
@@ -425,8 +453,8 @@
     return toBlob(c, 0.92);
   }
 
-  // De la tira: grilla de filas, renglones borrados, qué filas tienen número, y recorte de esas filas.
-  async function analyzeStrip(strip) {
+  // Mide la tira: grilla de filas, renglones borrados y probabilidad de que cada fila tenga un número.
+  function measureStrip(strip) {
     const ctx = strip.getContext("2d", { willReadFrequently: true });
     const img = ctx.getImageData(0, 0, strip.width, strip.height);
     const grid = Rows.fitGrid(img, Rows.N_ROWS);
@@ -435,14 +463,25 @@
     const ink = Rows.rowInk(img, grid);
     const rowFracs = [];
     for (let k = 0; k <= grid.n; k++) rowFracs.push(Math.min(1, Math.max(0, (grid.top + k * grid.pitch) / strip.height)));
-    const rowMeta = ink.map((r, i) => ({ index: i + 1, nonEmpty: r.nonEmpty, straddle: r.straddle }));
+    const rowMeta = ink.map((r, i) => ({ index: i + 1, p: r.p, nonEmpty: r.nonEmpty, sure: r.sure, ambiguous: r.ambiguous, alt: r.alt }));
+    return { img, grid, ink, rowFracs, rowMeta, gridFitted: grid.fitted };
+  }
+
+  // Además arma, para cada fila con número, el recorte que se manda a Cloud Vision (solo con los trazos de esa fila).
+  async function analyzeStrip(strip) {
+    const m = measureStrip(strip);
+    const tmp = document.createElement("canvas");
+    tmp.width = strip.width; tmp.height = strip.height;
+    const tctx = tmp.getContext("2d");
     const rowCrops = {};
-    for (let i = 0; i < ink.length; i++) {
-      if (!ink[i].nonEmpty) continue;
-      const blob = await cropRowBlob(strip, ink[i].bbox, grid.pitch);
+    for (let i = 0; i < m.ink.length; i++) {
+      if (!m.ink[i].nonEmpty) continue;
+      const masked = Rows.maskRow(m.img, m.ink, i);
+      tctx.putImageData(new ImageData(masked.data, masked.width, masked.height), 0, 0);
+      const blob = await cropRowBlob(tmp, m.ink[i].bbox, m.grid.pitch);
       rowCrops[i + 1] = { blob, url: URL.createObjectURL(blob) };
     }
-    return { rowFracs, rowMeta, rowCrops, gridFitted: grid.fitted };
+    return { rowFracs: m.rowFracs, rowMeta: m.rowMeta, rowCrops, gridFitted: m.gridFitted };
   }
 
   function freeAnalysis(p) {
@@ -451,8 +490,8 @@
   }
 
   // Recorta el papel, mejora la imagen y la agrega como una página nueva.
-  async function addPageFromCanvas(source) {
-    const myEpoch = epoch;
+  async function addPageFromCanvas(source, fromFile, startEpoch) {
+    const myEpoch = startEpoch === undefined ? epoch : startEpoch;   // la "época" con la que empezó el trabajo
     const full = fitCanvas(source, START_SIDE);
     let work, note = "", quad = null;
     if (autoCropChk.checked) {
@@ -475,7 +514,8 @@
     ectx.putImageData(imgData, 0, 0);
 
     // Orientación según la tabla, recuadro de cantidades y filas
-    const o = bestOrientation(enh);
+    const hint = live.an && live.an.deg !== undefined && Date.now() - live.an.t < 3000 && !fromFile ? live.an.deg : undefined;
+    const o = bestOrientation(enh, hint);
     if (o.deg) { work = rotateCanvas(work, o.deg); enh = rotateCanvas(enh, o.deg); }
     const table = o.table;
     let an = { rowFracs: [], rowMeta: [], rowCrops: {}, gridFitted: false };
@@ -549,12 +589,19 @@
         if (k < fr.length - 1) ctx.fillText(String(k + 1), X0 + 3, y + (fr[k + 1] - fr[k]) * (Y1 - Y0) * 0.72);
       }
     }
-    if (st >= 4) {   // 4) filas con número (las únicas que se mandan a leer)
+    if (st >= 4) {   // 4) filas con número (las únicas que se mandan a leer) y su probabilidad
+      ctx.font = "bold " + Math.max(8, Math.round((Y1 - Y0) / Math.max(1, fr.length - 1) * 0.5)) + "px system-ui, sans-serif";
       for (const r of page.rowMeta || []) {
-        if (!r.nonEmpty) continue;
         const ya = Y0 + fr[r.index - 1] * (Y1 - Y0), yb = Y0 + fr[r.index] * (Y1 - Y0);
-        ctx.fillStyle = "rgba(255,157,46,.38)"; ctx.fillRect(X0, ya, X1 - X0, yb - ya);
-        ctx.lineWidth = lw * 1.2; ctx.strokeStyle = COLORS.filled; ctx.strokeRect(X0, ya, X1 - X0, yb - ya);
+        if (r.nonEmpty) {
+          ctx.fillStyle = r.sure ? "rgba(255,157,46,.40)" : "rgba(255,157,46,.20)"; ctx.fillRect(X0, ya, X1 - X0, yb - ya);
+          ctx.lineWidth = lw * 1.2; ctx.strokeStyle = COLORS.filled;
+          ctx.setLineDash(r.sure ? [] : [lw * 2, lw * 1.5]); ctx.strokeRect(X0, ya, X1 - X0, yb - ya); ctx.setLineDash([]);
+        }
+        if (r.p >= 0.15) {
+          ctx.fillStyle = r.nonEmpty ? "#b45f00" : "#667";
+          ctx.fillText(Math.round(r.p * 100) + "%", X1 + 3, yb - (yb - ya) * 0.25);
+        }
       }
     }
   }
@@ -570,7 +617,8 @@
   function stageText(page) {
     if ((page.stage || 0) < 4) return STAGE_NAMES[page.stage || 0] || "";
     const idx = (page.rowMeta || []).filter((r) => r.nonEmpty).map((r) => r.index);
-    return idx.length ? "Filas con número: " + idx.join(", ") + " → " + idx.length + (idx.length === 1 ? " lectura" : " lecturas")
+    const dud = (page.rowMeta || []).filter((r) => r.nonEmpty && !r.sure).map((r) => r.index);
+    return idx.length ? "Filas con número: " + idx.join(", ") + " → " + idx.length + (idx.length === 1 ? " lectura" : " lecturas") + (dud.length ? " · dudosas: " + dud.join(", ") : "")
                       : "Ninguna fila con número (no se envió nada)";
   }
 
@@ -633,10 +681,11 @@
     setBusy(true);
     flash.classList.add("on");
     setTimeout(() => flash.classList.remove("on"), 60);
+    const e0 = epoch;
     try {
       setStatus("Procesando foto…", 0);
       const frame = await grabFrame();
-      const r = await addPageFromCanvas(frame);
+      const r = await addPageFromCanvas(frame, false, e0);
       setStatus("Foto " + pages.length + " guardada ✔ (" + r.w + "×" + r.h + ")" + r.note, 7000);
     } catch (err) {
       console.error(err);
@@ -684,7 +733,7 @@
         if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) { failed.push(f.name); continue; }
         try {
           const c = await fileToCanvas(f);
-          await addPageFromCanvas(c);
+          await addPageFromCanvas(c, true, myEpoch);
           ok++;
         } catch (e) {
           console.error("No se pudo abrir", f.name, e);
@@ -757,11 +806,11 @@
         const resp = resps[k];
         if (!resp || resp.error) return { index: r.index, words: [], failed: true };
         const { words } = OCR.extractWords(resp, { autoRotate: false });
-        return { index: r.index, words, straddle: r.straddle };
+        return { index: r.index, words, uncertain: !r.sure };
       });
       page.rows = OCR.buildRowsFromCells(cells, {
         products: catalogList(), minConf: OCR.minConfFor(settings.sensitivity),
-        decimals: settings.decimals, layoutOk: page.layoutOk
+        layoutOk: page.layoutOk
       });
       page.status = page.rows.length && !page.rows.some((r) => r.low) ? "ok" : "alert";
     } catch (err) {
@@ -882,7 +931,7 @@
     pages = [];
     setBusy(false);
     resetDragState();
-    live.stable = 0; live.table = null;
+    live.stable = 0; live.an = null; live.ticks = 0;
     render();
     ensureCamera();
     setStatus("Fotos borradas. Podés seguir escaneando.", 4000);
@@ -902,7 +951,8 @@
     editRows = page.rows.map((r) => ({
       name: r.name || "",
       qtyText: r.qty !== null && r.qty !== undefined ? OCR.formatQty(r.qty) : "",
-      low: !!r.low, index: r.index || 0, crop: r.index && page.rowCrops[r.index] ? page.rowCrops[r.index].url : ""
+      low: !!r.low, index: r.index || 0, crop: r.index && page.rowCrops[r.index] ? page.rowCrops[r.index].url : "",
+      meta: (page.rowMeta || []).find((m) => m.index === r.index) || null
     }));
     if (!editRows.length) editRows.push({ name: "", qtyText: "", low: false });
     editNum.textContent = String(pages.indexOf(page) + 1);
@@ -937,7 +987,8 @@
         const lab = document.createElement("div");
         lab.className = "rowcrop";
         const im = document.createElement("img"); im.src = row.crop; im.alt = "Fila " + row.index;
-        const sp = document.createElement("span"); sp.textContent = "Fila " + row.index + " — lo que se envió a Google";
+        const sp = document.createElement("span"); sp.textContent = "Fila " + row.index + (row.meta ? " · " + Math.round(row.meta.p * 100) + "% de probabilidad de número" : "") +
+          (row.meta && row.meta.ambiguous ? " · ¿o es de la fila " + row.meta.alt + "?" : "") + " — lo que se envió a Google";
         lab.append(sp, im);
         div.appendChild(lab);
       }
@@ -982,7 +1033,6 @@
   settingsBtn.addEventListener("click", () => {
     keyInput.value = settings.apiKey;
     sensSelect.value = settings.sensitivity;
-    decSelect.value = String(settings.decimals === undefined ? 2 : settings.decimals);
     updateUsageLabels();
     catalogInput.value = settings.catalog;
     hiResChk.checked = !!settings.hiRes;
@@ -993,7 +1043,6 @@
   $("saveSettings").addEventListener("click", () => {
     settings.apiKey = keyInput.value.trim();
     settings.sensitivity = sensSelect.value;
-    settings.decimals = Number(decSelect.value);
     settings.catalog = catalogInput.value;
     settings.hiRes = hiResChk.checked;
     persistSettings();

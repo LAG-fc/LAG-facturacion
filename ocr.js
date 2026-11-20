@@ -317,13 +317,13 @@
   // Los errores típicos de Vision con la coma escrita a mano: la lee como punto, barra, punto y coma,
   // la confunde con un 1 (queda "48912"), la pierde, o parte el número en dos palabras ("489," "12").
   // Se normaliza todo a "489,12" y se marca como dudoso (⚠) lo que no es una lectura limpia.
+  // (No se exige una cantidad fija de decimales: se respeta lo que se leyó.)
   const SEP_CLEAN = new Set([","]);
   const SEP_SOFT = new Set(["."]);
   const SEP_DIRTY = new Set([";", ":", "'", "’", "`", "´", "/", "\\", "|", "!", "‚", "،", "·", "ˌ"]);
 
   function readQuantity(words, opts) {
     opts = opts || {};
-    const dec = opts.decimals === undefined ? 2 : opts.decimals;
     const ws = [...words].sort((a, b) => a.x0 - b.x0);
     // lista de símbolos con su confianza
     const syms = [];
@@ -367,8 +367,7 @@
     if (groups.length === 1) {
       const d = groups[0];
       if (d.length > 6) return { value: null, text: d, low: true, conf: minDigitConf };
-      if (d.length >= 4) { intPart = d.slice(0, d.length - dec); decPart = d.slice(d.length - dec); low = true; }   // se perdió la coma
-      else intPart = d;
+      intPart = d;
     } else if (groups.length === 2) {
       intPart = groups[0]; decPart = groups[1];
       const s = seps[0];
@@ -379,7 +378,6 @@
         if (s.c < 0.7) low = true;
       } else low = true;
       if (decPart.length === 3 && s && s.kind !== "clean") low = true;   // 1.250 puede ser mil doscientos cincuenta
-      if (dec && decPart.length !== dec) low = true;       // se esperaban 2 decimales (489,12)
     } else {
       // 1.250,50 · 1 250,50 · "4 89 12": se toma el último grupo como decimales
       const last = seps[seps.length - 1];
@@ -408,11 +406,11 @@
         const row = makeRow(name, null, "", 0, "fila " + cell.index + ": (no se pudo leer)", minConf);
         row.low = true; row.index = cell.index; rows.push(row); continue;
       }
-      const q = cell.words.length ? readQuantity(cell.words, { decimals: o.decimals }) : null;
+      const q = cell.words.length ? readQuantity(cell.words) : null;
       let row;
       if (q && q.value !== null) {
         row = makeRow(name, q.value, q.text, q.conf, "fila " + cell.index + ": " + raw, minConf);
-        if (q.low || o.layoutOk === false || cell.straddle) row.low = true;
+        if (q.low || o.layoutOk === false || cell.uncertain) row.low = true;
       } else {
         row = makeRow(name, null, q ? q.text : raw, 0, "fila " + cell.index + ": " + raw, minConf);
         row.low = true;

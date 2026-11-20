@@ -124,3 +124,5 @@ dialog textarea { width: 100%; background: #1b1d21; color: #eee; border: 1px sol
 .erow .rowcrop { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9ad; background: #1b1d21; border-radius: 6px; padding: 6px; }
 .erow .rowcrop img { max-height: 70px; max-width: 100%; object-fit: contain; align-self: flex-start; background: #fff; border-radius: 4px; }
 .erow:has(.rowcrop) { row-gap: 6px; }
+
+.ver { font-size: 11px; font-weight: 600; margin-left: 6px; padding: 2px 7px; border-radius: 9px; background: #3a4150; color: #cfd6e4; vertical-align: middle; }

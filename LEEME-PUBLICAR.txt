@@ -98,10 +98,7 @@ NOVEDAD v4.2: CUADROS EN SECUENCIA, FILA POR FILA
   Se ve en la cámara en vivo, en cada foto tomada y en "✏ Datos".
 - Cada fila se revisa sola. Las filas con número se marcan en naranja y SOLO esas se mandan a Cloud
   Vision, todas juntas en una única consulta. El número de fila se guarda y es el que decide el producto.
-- Lectura de decimales más segura: se normalizan separadores (. , ; ' /), se completa una coma
-  faltante (48912 → 489,12) y se marca con ⚠ cualquier cantidad con otra cantidad de decimales.
-  En "✏ Datos" ves la imagen exacta de cada fila enviada para comprobar a ojo.
-  La cantidad de decimales se elige en ⚙ Ajustes (por defecto 2).
+  En "✏ Datos" ves la imagen exacta de cada fila enviada para comprobarla a ojo.
 - Contador de lecturas del mes en ⚙ Ajustes (gratis: 1000 por mes). Cuenta solo en ESTE dispositivo.
 - "Vaciar todo": ahora usa su propio cuadro de confirmación, reinicia la cámara, cancela lo que estaba
   procesando y deja de nuevo funcionando el arrastre de fotos.
@@ -113,3 +110,26 @@ CÓMO ACTUALIZAR EN GITHUB
    anteriores con el mismo nombre; incluí también la carpeta icons).
 3. "Commit changes". En 1–2 minutos se publica.
 4. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces para que tome la versión nueva.
+
+
+------------------------------------------------
+NOVEDAD v4.3 (la versión se ve arriba, al lado del título, y en ⚙ Ajustes)
+------------------------------------------------
+- Las 19 filas aparecen EN VIVO en la cámara, siguiendo la perspectiva de la hoja, y se actualizan solas.
+  Las filas con número se ven en naranja con su porcentaje. Al sacar la foto se usa el mismo cálculo.
+- Cada fila recibe una PROBABILIDAD de tener un número, según la forma de los trazos:
+  los trazos de un mismo número se agrupan (dígitos uno al lado del otro), el número se asigna a UNA sola
+  fila (la que tiene más tinta del número), y las comas, puntos y colitas viajan con su número.
+  Se envían a Google las filas con 35% o más. Entre 35% y 70% (borde punteado) quedan marcadas con ⚠.
+  Si un número está repartido entre dos filas, el editor avisa "¿o es de la fila N?".
+- A Cloud Vision se le manda cada fila solo con los trazos de ESA fila (se borran los de la fila vecina).
+- Se ubica mejor el principio de la tabla: usa los renglones punteados y que la tabla tiene 19 filas.
+  (Antes, en algunas fotos, la fila 1 quedaba afuera del recuadro.)
+- Se quitó el ajuste de decimales: se respeta lo que lee Google.
+- "Vaciar todo": corregido un caso en que una foto que se estaba procesando volvía a aparecer.
+
+CÓMO ACTUALIZAR EN GITHUB (v4.3)
+1. Repositorio > "Add file" > "Upload files".
+2. Arrastrá TODO el contenido de esta carpeta (no hay archivos nuevos; reemplazan a los que ya tenés).
+3. "Commit changes". Esperá 1–2 minutos.
+4. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v4.3.
