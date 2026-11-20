@@ -1,4 +1,4 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 5.0
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 5.1
 =======================================================
 
 QUÉ HACE
@@ -7,9 +7,17 @@ QUÉ HACE
 - "Subir foto" o arrastrar fotos (también varias a la vez). Botones Girar y Quitar en cada remito; tocar la miniatura la agranda.
 - Modos de imagen: Color mejorado (como CamScanner), Documento, Grises y Color original.
 - "Guardar como PDF": se abre la TABLA DE RECEPCIONES. Ahí se cargan las cantidades totales de cada producto
-  (se pueden escribir sumas, por ejemplo 120+35,5) y se elige el nombre del archivo.
+  (se pueden escribir sumas, por ejemplo 120+35,5) y se escribe el número de OC (orden de compra).
   El PDF sale con el logotipo de la empresa, encabezado y numeración en cada remito, y la tabla al final.
   Los productos sin cantidad no aparecen en la tabla.
+- NOMBRE AUTOMÁTICO DEL PDF: REMITOS_<OC>_<desde>_al_<hasta>. Ya no se escribe el nombre a mano.
+  Arriba de la cámara se elige "Semanal" o "Quincenal" (queda recordado):
+  * Quincenal: del día 16 en adelante -> 1 al 15 (ej. REMITOS_93031_1_al_15).
+               del día 1 al 15 -> 16 al último día del mes anterior (ej. REMITOS_93031_16_al_31).
+  * Semanal: bloques de 7 días del mes (1-7, 8-14, 15-21, 22-28 y 29-fin de mes); se usa la semana actual
+    (ej. REMITOS_93035_15_al_21). Si querés otra regla, avisá.
+  La OC y el período también aparecen en el encabezado de cada remito y en la tabla del PDF.
+  El número de OC queda guardado hasta "Vaciar todo".
 - La lista de productos se edita en Ajustes (uno por línea).
 - Ya NO lee texto automáticamente (se quitó Google Cloud Vision). No hace falta ninguna clave.
 
@@ -18,9 +26,9 @@ CÓMO ACTUALIZAR EN GITHUB (si ya la publicaste)
 2. BORRÁ estos archivos viejos (ya no se usan): ocr.js, layout.js, rows.js
    (se abren, tocás los tres puntitos > "Delete file" > "Commit changes").
 3. "Add file" > "Upload files" y arrastrá TODO el contenido de esta carpeta (incluida la carpeta icons).
-   Hay archivos nuevos: logo.png y logo-pdf.js. Los demás reemplazan a los que tenías.
+   Archivo nuevo en esta versión: period.js (obligatorio). Los demás reemplazan a los que tenías.
 4. "Commit changes". En 1–2 minutos se publica.
-5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v5.0.
+5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v5.1.
    Si la tenías instalada con el ícono viejo, el ícono nuevo puede tardar en cambiar (o reinstalala).
 
 RECOMENDACIÓN

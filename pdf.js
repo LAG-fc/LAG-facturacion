@@ -82,7 +82,7 @@
     let tx = MX;
     if (o.logo) { const l = logoOp(o.logo, MX, top - hh, hh); ops += l.ops; tx = MX + l.w + 12; }
     ops += text(o.company || "", tx, top - 16, 12, "F3", WINE);
-    ops += text("Remito escaneado", tx, top - 30, 8.5, "F1", MUTED);
+    ops += text(["Remito escaneado", o.oc ? "OC " + o.oc : "", o.periodText ? "Período " + o.periodText : ""].filter(Boolean).join("  ·  "), tx, top - 30, 8.5, "F1", MUTED);
     ops += rightText("Remito " + n + " de " + total, pw - MX, top - 16, 10.5, "F2", INK, true);
     if (o.date) ops += rightText(o.date, pw - MX, top - 30, 8.5, "F1", MUTED, false);
     ops += line(MX, top - hh - 7, pw - MX, top - hh - 7, WINE, 1.1);
@@ -111,7 +111,7 @@
         if (o.logo) { const l = logoOp(o.logo, TM, A4H - 40 - logoH, logoH); ops += l.ops; tx = TM + l.w + 20; }
         ops += text("TABLA DE RECEPCIONES", tx, A4H - 72, 21, "F3", WINE);
         ops += text(o.company || "", tx, A4H - 90, 10.5, "F2", INK);
-        const meta = [o.date ? "Fecha: " + o.date : "", o.remitos ? "Remitos escaneados: " + o.remitos : ""].filter(Boolean).join("   ·   ");
+        const meta = [o.oc ? "OC: " + o.oc : "", o.periodText ? "Período: " + o.periodText : "", o.date ? "Fecha: " + o.date : "", o.remitos ? "Remitos escaneados: " + o.remitos : ""].filter(Boolean).join("   ·   ");
         if (meta) ops += text(meta, tx, A4H - 105, 9, "F1", MUTED);
         ops += line(TM, A4H - 128, A4W - TM, A4H - 128, WINE, 1.4);
         y = A4H - 148;

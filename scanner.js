@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "5.0";
+  const APP_VERSION = "5.1";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 
@@ -13,7 +13,7 @@
   const settingsDialog = $("settingsDialog"), catalogInput = $("catalogInput"), hiResChk = $("hiResChk");
   const msgDialog = $("msgDialog"), msgText = $("msgText"), msgOk = $("msgOk"), msgCancel = $("msgCancel");
   const totalsDialog = $("totalsDialog"), totalsForm = $("totalsForm"), totalsRows = $("totalsRows"), totalsErr = $("totalsErr");
-  const totalsOk = $("totalsOk"), nameField = $("nameField"), nameInput = $("nameInput"), totalsHint = $("totalsHint");
+  const totalsOk = $("totalsOk"), ocField = $("ocField"), ocInput = $("ocInput"), totalsHint = $("totalsHint");
   const previewDialog = $("previewDialog"), previewImg = $("previewImg");
 
   const DEFAULT_CATALOG = [
@@ -22,7 +22,7 @@
     "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE",
     "SANDWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
   ];
-  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", hiRes: true, catalog: DEFAULT_CATALOG.join("\n") };
+  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", hiRes: true, catalog: DEFAULT_CATALOG.join("\n") };
   let settings = { ...DEFAULTS };
   let stream = null;
   let stillOk = null;               // null = sin probar; true/false = se puede / no se puede la foto de máxima resolución
@@ -565,7 +565,7 @@
     queue.length = 0;
     pages.forEach(releasePage);
     pages = [];
-    totalsState = { values: {}, extras: [] };
+    totalsState = { values: {}, extras: [], oc: "" };
     persistTotals();
     grabbing = false;
     resetDragState();
@@ -584,8 +584,8 @@
   let totalsState = loadTotals();
   let totalsMode = "edit";
   function loadTotals() {
-    try { const t = JSON.parse(localStorage.getItem("totals") || "{}"); return { values: t.values || {}, extras: Array.isArray(t.extras) ? t.extras : [] }; }
-    catch (e) { return { values: {}, extras: [] }; }
+    try { const t = JSON.parse(localStorage.getItem("totals") || "{}"); return { values: t.values || {}, extras: Array.isArray(t.extras) ? t.extras : [], oc: Period.cleanOc(t.oc) }; }
+    catch (e) { return { values: {}, extras: [], oc: "" }; }
   }
   function persistTotals() { try { localStorage.setItem("totals", JSON.stringify(totalsState)); } catch (e) { /* nada */ } }
 
@@ -630,14 +630,33 @@
   }
   function updateTotalsInfo() {
     const n = totalsFilledCount();
-    totalsInfo.textContent = n ? n + (n === 1 ? " producto con cantidad" : " productos con cantidad") : "Sin cantidades cargadas";
+    const base = n ? n + (n === 1 ? " producto con cantidad" : " productos con cantidad") : "Sin cantidades cargadas";
+    totalsInfo.textContent = (totalsState.oc ? "OC " + totalsState.oc + " · " : "") + base;
     totalsInfo.classList.toggle("filled", n > 0);
   }
 
-  function defaultName() {
-    const d = new Date(), p = (n) => String(n).padStart(2, "0");
-    return "Remitos " + d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + "." + p(d.getMinutes());
+  // ---------- Período (semanal / quincenal) y nombre del PDF ----------
+  const currentPeriod = () => Period.forDate(settings.periodMode === "quincenal" ? "quincenal" : "semanal", new Date());
+  const periodSeg = $("periodSeg"), periodText = $("periodText"), periodSub = $("periodSub");
+  const fileNamePreview = $("fileNamePreview"), periodHint = $("periodHint");
+  const pdfName = () => Period.fileName(totalsState.oc || "", currentPeriod());
+
+  function refreshPeriod() {
+    const p = currentPeriod();
+    periodSeg.querySelectorAll(".seg-btn").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mode === p.mode)));
+    periodText.textContent = "día " + Period.text(p);
+    periodSub.textContent = "(" + p.label + ")";
+    periodHint.textContent = "· período " + Period.text(p);
+    fileNamePreview.textContent = "REMITOS_" + (totalsState.oc || "OC") + "_" + p.from + "_al_" + p.to;
   }
+  periodSeg.addEventListener("click", (e) => {
+    const b = e.target.closest(".seg-btn");
+    if (!b) return;
+    settings.periodMode = b.dataset.mode;
+    persistSettings();
+    refreshPeriod();
+  });
+  setInterval(refreshPeriod, 60000);
 
   function calcLabel(row, input) {
     const q = parseQty(input.value);
@@ -685,18 +704,19 @@
   function openTotals(mode) {
     totalsMode = mode;
     const save = mode === "save";
-    nameField.hidden = !save;
+    ocField.hidden = !save;
     totalsOk.textContent = save ? "Guardar PDF" : "Aceptar";
     totalsHint.textContent = save
       ? "Cargá la cantidad total recibida de cada producto antes de guardar. Los que dejes vacíos no aparecen en el PDF."
       : "Cargá la cantidad total recibida de cada producto. Quedan guardadas hasta que vacíes todo.";
-    if (save) nameInput.value = defaultName();
+    if (save) ocInput.value = totalsState.oc || "";
+    refreshPeriod();
     totalsErr.textContent = "";
     buildTotalsRows();
     totalsDialog.showModal();
     totalsRows.scrollTop = 0;
     const first = totalsRows.querySelector("input.q");
-    if (save) { nameInput.focus(); nameInput.select(); } else if (first) first.focus();
+    if (save) { ocInput.focus(); ocInput.select(); } else if (first) first.focus();
   }
 
   // Enter pasa al siguiente casillero (en vez de cerrar el cuadro)
@@ -709,6 +729,14 @@
     else totalsOk.focus();
   });
 
+  ocInput.addEventListener("input", () => {
+    const c = Period.cleanOc(ocInput.value);
+    if (c !== ocInput.value) ocInput.value = c;
+    ocInput.classList.remove("bad");
+    totalsState.oc = c; persistTotals(); refreshPeriod(); updateTotalsInfo();
+    totalsErr.textContent = "";
+  });
+
   $("addExtraBtn").addEventListener("click", () => {
     totalsState.extras.push({ name: "", text: "" });
     persistTotals(); buildTotalsRows();
@@ -716,7 +744,7 @@
     if (names.length) { names[names.length - 1].focus(); totalsRows.scrollTop = totalsRows.scrollHeight; }
   });
   $("clearTotalsBtn").addEventListener("click", () => {
-    totalsState = { values: {}, extras: [] };
+    totalsState = { values: {}, extras: [], oc: totalsState.oc };   // la OC no se borra
     persistTotals(); buildTotalsRows(); updateTotalsInfo();
   });
   $("totalsCancel").addEventListener("click", () => totalsDialog.close());
@@ -757,13 +785,18 @@
     const rows = collectTotals();
     if (rows === null) return;
     if (totalsMode === "edit") { totalsDialog.close(); updateTotalsInfo(); return; }
-    let name = nameInput.value.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\.pdf$/i, "");
-    if (!name) name = defaultName();
+    if (!totalsState.oc) {
+      ocInput.classList.add("bad"); ocInput.focus();
+      totalsErr.textContent = "Escribí el número de la orden de compra (OC) para poder nombrar el PDF.";
+      return;
+    }
+    const period = currentPeriod();
+    const name = Period.fileName(totalsState.oc, period);
     if (!rows.length) {
       totalsDialog.close();
-      if (!(await askConfirm("No cargaste ninguna cantidad, así que el PDF saldrá sin la tabla de recepciones.\n\n¿Guardarlo igual?", "Guardar igual", "Volver"))) { openTotals("save"); nameInput.value = name; return; }
+      if (!(await askConfirm("No cargaste ninguna cantidad, así que el PDF saldrá sin la tabla de recepciones.\n\n¿Guardarlo igual?", "Guardar igual", "Volver"))) { openTotals("save"); return; }
     } else totalsDialog.close();
-    await savePdf(name, rows);
+    await savePdf(name, rows, period);
   });
 
   // ---------- Guardar PDF ----------
@@ -777,7 +810,7 @@
     openTotals("save");
   });
 
-  async function savePdf(name, rows) {
+  async function savePdf(name, rows, period) {
     setStatus("Generando PDF…", 0);
     try {
       const ok = pages.filter((p) => p.status === "ok" && p.blob);
@@ -786,7 +819,7 @@
       const L = window.LOGO_PDF;
       const d = new Date(), pad = (n) => String(n).padStart(2, "0");
       const pdf = buildPdf(data, {
-        company: COMPANY, title: name,
+        company: COMPANY, title: name, oc: totalsState.oc, periodText: Period.text(period),
         date: pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear(),
         logo: L ? { bytes: b64ToBytes(L.b64), w: L.w, h: L.h } : null,
         summary: rows.length ? { rows, note: "Cantidades ingresadas manualmente por el responsable de recepción." } : null
@@ -828,6 +861,9 @@
   $("verTag").textContent = "v" + APP_VERSION;
   $("verLabel").textContent = APP_VERSION;
   settings = loadSettings();
+  if (settings.periodMode !== "quincenal") settings.periodMode = "semanal";
+  refreshPeriod();
+  updateTotalsInfo();
   persistSettings();                 // limpia del navegador los datos de la lectura de texto de versiones anteriores
   autoCropChk.checked = settings.autoCrop !== false;
   filterSelect.value = settings.filterMode || "mejorado";

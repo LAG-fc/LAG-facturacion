@@ -226,3 +226,20 @@ textarea { resize: vertical; line-height: 1.5; font-family: var(--sans); }
   .wide-dlg .field, .wide-dlg .tt-head, .wide-dlg .tt-rows, .wide-dlg .tt-tools, .wide-dlg form > .hint, .wide-dlg .err, .wide-dlg .dialog-actions { margin-left: 14px; margin-right: 14px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---- v5.1: período (Semanal / Quincenal) y orden de compra ---- */
+.period-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.seg { display: inline-flex; background: var(--wine-soft); border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px; }
+.seg-btn { border: 0; background: transparent; color: var(--wine); font: inherit; font-weight: 600; font-size: 14px; padding: 8px 20px; border-radius: 999px; cursor: pointer; min-height: 38px; }
+.seg-btn[aria-checked="true"] { background: var(--wine); color: #fff; box-shadow: 0 1px 3px rgba(116,20,32,.35); }
+.period-info { font-size: 14px; color: var(--ink); }
+.period-info .period-lab { color: #7a6f66; }
+.period-info small { color: #7a6f66; }
+#ocInput { font-size: 20px; letter-spacing: 1px; font-weight: 600; }
+#ocInput.bad { border-color: #c0392b; background: #fdecea; }
+#fileNamePreview { word-break: break-all; color: var(--wine); }
+@media (max-width: 640px) {
+  .period-bar { gap: 8px; }
+  .seg { width: 100%; }
+  .seg-btn { flex: 1; }
+}

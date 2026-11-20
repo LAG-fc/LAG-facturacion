@@ -42,12 +42,19 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg>Instalar</button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v5.0</span>
+      <span class="ver" id="verTag">v5.1</span>
     </div>
   </header>
 
   <main class="layout">
     <section class="card scan">
+      <div class="period-bar">
+        <div class="seg" id="periodSeg" role="radiogroup" aria-label="Tipo de período">
+          <button type="button" role="radio" class="seg-btn" data-mode="semanal" aria-checked="true">Semanal</button>
+          <button type="button" role="radio" class="seg-btn" data-mode="quincenal" aria-checked="false">Quincenal</button>
+        </div>
+        <div class="period-info"><span class="period-lab">Remitos del</span> <b id="periodText">—</b> <small id="periodSub"></small></div>
+      </div>
       <div class="scan-toolbar">
         <label class="field-inline">Cámara
           <select id="cameraSelect"></select>
@@ -110,7 +117,7 @@
     </div>
   </dialog>
 
-  <!-- Totales recepcionados (y nombre del PDF) -->
+  <!-- Totales recepcionados y orden de compra -->
   <dialog id="totalsDialog" class="dlg wide-dlg">
     <form method="dialog" id="totalsForm" novalidate>
       <div class="dlg-head">
@@ -120,9 +127,9 @@
           <p class="hint" id="totalsHint">Cargá la cantidad total recibida de cada producto. Los que dejes vacíos no aparecen en el PDF.</p>
         </div>
       </div>
-      <label class="field" id="nameField">Nombre del archivo PDF
-        <input id="nameInput" type="text" autocomplete="off" spellcheck="false">
-        <small class="hint">Se guarda en Descargas (el .pdf se agrega solo).</small>
+      <label class="field" id="ocField">Orden de compra (OC)
+        <input id="ocInput" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" spellcheck="false" placeholder="Ej.: 93035" maxlength="12">
+        <small class="hint">Archivo: <b id="fileNamePreview">REMITOS_…</b>.pdf <span id="periodHint"></span></small>
       </label>
       <div class="tt-head"><span>N°</span><span>Producto</span><span>Cantidad total</span></div>
       <div id="totalsRows" class="tt-rows"></div>
@@ -155,7 +162,7 @@
       <button type="button" id="resetCatalog" class="btn ghost small">Restaurar lista original</button>
     </div>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">5.0</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">5.1</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
@@ -165,6 +172,7 @@
   <script src="logo-pdf.js"></script>
   <script src="crop.js"></script>
   <script src="enhance.js"></script>
+  <script src="period.js"></script>
   <script src="pdf.js"></script>
   <script src="scanner.js"></script>
 </body>
