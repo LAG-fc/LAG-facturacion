@@ -1,135 +1,35 @@
-ESCÁNER DE REMITOS — PÁGINA WEB INSTALABLE (v4.1)
-================================================
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 5.0
+=======================================================
 
-QUÉ ES
-Es una página web (no una extensión). Se publica una vez en internet gratis, y desde ahí se abre
-en la PC o en el celular, y se puede "instalar" para que quede como una aplicación con su ícono.
-Las fotos y el PDF se procesan en tu propio dispositivo; solo la lectura de texto consulta a Google.
-
-IMPORTANTE ANTES DE EMPEZAR
-- La cámara solo funciona en páginas con https:// (todos los hostings de abajo lo dan solo).
-- Esta carpeta NO se abre con doble clic (la cámara y la instalación no funcionan desde archivos locales).
-  Hay que publicarla.
-
-------------------------------------------------
-OPCIÓN A (la más fácil): NETLIFY DROP
-------------------------------------------------
-1. Descomprimí el .zip. Queda una carpeta "escaner-remitos-web".
-2. Entrá a https://app.netlify.com/drop
-   (conviene crear antes una cuenta gratis en https://app.netlify.com/login con tu mail; si no,
-   la página queda con una contraseña temporal hasta que la "reclames" iniciando sesión).
-3. Arrastrá la carpeta (o el .zip) adentro del recuadro.
-4. Netlify te da una dirección que termina en .netlify.app. Esa es tu página.
-5. Para actualizar en el futuro: entrá al panel de tu proyecto, sección "Production deploys",
-   y arrastrá la carpeta nueva. Se reemplaza sola.
-
-------------------------------------------------
-OPCIÓN B (permanente y sin cuenta de empresa): GITHUB PAGES
-------------------------------------------------
-1. Creá una cuenta gratis en https://github.com
-2. Botón verde "New" > nombre del repositorio: remitos > marcá "Public" > "Create repository".
-3. En el repositorio: "uploading an existing file" > arrastrá TODO lo que hay ADENTRO de la carpeta
-   escaner-remitos-web (index.html, sw.js, icons, etc. — no la carpeta en sí) > "Commit changes".
-4. Settings > Pages > Source: "Deploy from a branch" > Branch: main, carpeta / (root) > Save.
-5. A los 1–2 minutos queda en https://TU-USUARIO.github.io/remitos/
-   (El repositorio público es visible para cualquiera: no subas nada más que esta carpeta.
-   Tu clave de Google NO está en los archivos: se escribe en la página y queda en tu navegador.)
-
-------------------------------------------------
-CLAVE DE GOOGLE (API key)
-------------------------------------------------
-- La clave se carga en la página: ⚙ Ajustes > pegar clave. Se guarda solo en ese navegador/celular.
-  En cada dispositivo (y si cambia la dirección de la página) hay que cargarla otra vez.
-- Costo de Google Cloud Vision: las primeras 1.000 lecturas por mes son gratis; después cuesta
-  USD 1,50 cada 1.000 (precio vigente al 19/11/2026). Cada foto = 1 lectura. Google pide tener la
-  facturación activada en el proyecto aunque no superes lo gratis.
-- RECOMENDADO — restringir la clave para que nadie más la pueda usar:
-  Google Cloud Console > APIs y servicios > Credenciales > tu clave >
-    * "Restricciones de la aplicación": Sitios web (referentes HTTP). Agregá, por ejemplo:
-        tu-sitio.netlify.app/*          (Netlify)
-        tu-usuario.github.io/*          (GitHub Pages)
-    * "Restricciones de la API": Restringir clave > Cloud Vision API.
-  Los cambios pueden tardar unos minutos en aplicarse.
-
-------------------------------------------------
-INSTALAR COMO APLICACIÓN
-------------------------------------------------
-- PC con Chrome o Edge: aparece el botón "⬇ Instalar" arriba (o el ícono de instalar en la barra de
-  direcciones).
-- Android (Chrome): botón "⬇ Instalar" o menú ⋮ > "Instalar aplicación".
-- iPhone/iPad: abrir la página en Safari > botón Compartir (cuadrado con flecha) >
-  "Añadir a pantalla de inicio" > "Añadir".
-- Cuando haya una versión nueva, se actualiza sola al abrir la aplicación con internet
-  (a veces hay que cerrarla y abrirla dos veces).
-
-------------------------------------------------
-LO QUE HACE LA VERSIÓN 4
-------------------------------------------------
-- Recorte automático: busca la hoja completa y siempre la deja como un rectángulo con la
-  proporción del remito (aunque la foto esté en perspectiva o un dedo tape una esquina).
-- Fotos subidas: respetan la orientación del celular y, si la hoja está de costado o al revés, la
-  lectura la endereza sola.
-- Lectura: solo mira la zona central. Cantidades = columna izquierda; productos = filas del medio.
-  Firmas, notas y números de la derecha se ignoran. Funciona aunque no se lea el encabezado.
-
-------------------------------------------------
-NOVEDAD v4.1: LECTURA SOLO DE LA COLUMNA DE CANTIDADES
-------------------------------------------------
-- La página ubica las líneas del marco de la tabla, recorta SOLO la columna de cantidades (de la
-  fila 1 a la fila 19) y manda únicamente esa imagen a Cloud Vision (1 imagen = 1 lectura).
-- Cada cantidad se asigna al producto por el número de fila contado desde arriba:
-  fila 1 = primer producto de la lista, fila 2 = segundo, etc. (la fila 19 no tiene producto).
-- La lista de productos (⚙ Ajustes) es ahora el ORDEN de las filas. Se actualiza sola a la lista nueva
-  la primera vez que se abre esta versión.
-- Si la hoja está de costado o al revés, se endereza sola mirando dónde está la tabla.
-- En "✏ Datos" se ve la tira exacta que se envió a Google.
+QUÉ HACE
+- Cámara en vivo con recuadro verde sobre la hoja; al sacar la foto, la hoja se recorta y se endereza sola.
+- Se pueden seguir sacando fotos mientras las anteriores se procesan.
+- "Subir foto" o arrastrar fotos (también varias a la vez). Botones Girar y Quitar en cada remito; tocar la miniatura la agranda.
+- Modos de imagen: Color mejorado (como CamScanner), Documento, Grises y Color original.
+- "Guardar como PDF": se abre la TABLA DE RECEPCIONES. Ahí se cargan las cantidades totales de cada producto
+  (se pueden escribir sumas, por ejemplo 120+35,5) y se elige el nombre del archivo.
+  El PDF sale con el logotipo de la empresa, encabezado y numeración en cada remito, y la tabla al final.
+  Los productos sin cantidad no aparecen en la tabla.
+- La lista de productos se edita en Ajustes (uno por línea).
+- Ya NO lee texto automáticamente (se quitó Google Cloud Vision). No hace falta ninguna clave.
 
 CÓMO ACTUALIZAR EN GITHUB (si ya la publicaste)
-1. Entrá a tu repositorio > "Add file" > "Upload files".
-2. Arrastrá TODO el contenido de esta carpeta (hay un archivo NUEVO: layout.js; los demás reemplazan
-   a los anteriores con el mismo nombre; la carpeta icons también).
-3. "Commit changes". En 1–2 minutos se publica.
-4. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces para que tome la versión nueva.
+1. Entrá a tu repositorio.
+2. BORRÁ estos archivos viejos (ya no se usan): ocr.js, layout.js, rows.js
+   (se abren, tocás los tres puntitos > "Delete file" > "Commit changes").
+3. "Add file" > "Upload files" y arrastrá TODO el contenido de esta carpeta (incluida la carpeta icons).
+   Hay archivos nuevos: logo.png y logo-pdf.js. Los demás reemplazan a los que tenías.
+4. "Commit changes". En 1–2 minutos se publica.
+5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v5.0.
+   Si la tenías instalada con el ícono viejo, el ícono nuevo puede tardar en cambiar (o reinstalala).
 
-------------------------------------------------
-NOVEDAD v4.2: CUADROS EN SECUENCIA, FILA POR FILA
-------------------------------------------------
-- Se dibujan en orden: ① Hoja (verde) → ② Cantidades (azul) → ③ las 19 Filas (amarillo, numeradas).
-  Se ve en la cámara en vivo, en cada foto tomada y en "✏ Datos".
-- Cada fila se revisa sola. Las filas con número se marcan en naranja y SOLO esas se mandan a Cloud
-  Vision, todas juntas en una única consulta. El número de fila se guarda y es el que decide el producto.
-  En "✏ Datos" ves la imagen exacta de cada fila enviada para comprobarla a ojo.
-- Contador de lecturas del mes en ⚙ Ajustes (gratis: 1000 por mes). Cuenta solo en ESTE dispositivo.
-- "Vaciar todo": ahora usa su propio cuadro de confirmación, reinicia la cámara, cancela lo que estaba
-  procesando y deja de nuevo funcionando el arrastre de fotos.
-- Nota: la tabla tiene 19 filas (18 con producto impreso y 1 vacía al final).
+RECOMENDACIÓN
+- Como ya no se usa Google Cloud Vision, podés borrar la clave (API key) en Google Cloud Console
+  (APIs y servicios > Credenciales) para que no quede una clave suelta.
 
-CÓMO ACTUALIZAR EN GITHUB
-1. Repositorio > "Add file" > "Upload files".
-2. Arrastrá TODO el contenido de esta carpeta. Hay un archivo NUEVO: rows.js (el resto reemplaza a los
-   anteriores con el mismo nombre; incluí también la carpeta icons).
-3. "Commit changes". En 1–2 minutos se publica.
-4. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces para que tome la versión nueva.
-
-
-------------------------------------------------
-NOVEDAD v4.3 (la versión se ve arriba, al lado del título, y en ⚙ Ajustes)
-------------------------------------------------
-- Las 19 filas aparecen EN VIVO en la cámara, siguiendo la perspectiva de la hoja, y se actualizan solas.
-  Las filas con número se ven en naranja con su porcentaje. Al sacar la foto se usa el mismo cálculo.
-- Cada fila recibe una PROBABILIDAD de tener un número, según la forma de los trazos:
-  los trazos de un mismo número se agrupan (dígitos uno al lado del otro), el número se asigna a UNA sola
-  fila (la que tiene más tinta del número), y las comas, puntos y colitas viajan con su número.
-  Se envían a Google las filas con 35% o más. Entre 35% y 70% (borde punteado) quedan marcadas con ⚠.
-  Si un número está repartido entre dos filas, el editor avisa "¿o es de la fila N?".
-- A Cloud Vision se le manda cada fila solo con los trazos de ESA fila (se borran los de la fila vecina).
-- Se ubica mejor el principio de la tabla: usa los renglones punteados y que la tabla tiene 19 filas.
-  (Antes, en algunas fotos, la fila 1 quedaba afuera del recuadro.)
-- Se quitó el ajuste de decimales: se respeta lo que lee Google.
-- "Vaciar todo": corregido un caso en que una foto que se estaba procesando volvía a aparecer.
-
-CÓMO ACTUALIZAR EN GITHUB (v4.3)
-1. Repositorio > "Add file" > "Upload files".
-2. Arrastrá TODO el contenido de esta carpeta (no hay archivos nuevos; reemplazan a los que ya tenés).
-3. "Commit changes". Esperá 1–2 minutos.
-4. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v4.3.
+PUBLICAR DESDE CERO (primera vez)
+1. Crear cuenta en github.com y un repositorio público nuevo.
+2. "Add file" > "Upload files" y arrastrar todo el contenido de esta carpeta. "Commit changes".
+3. Settings > Pages > Source: "Deploy from a branch", rama main, carpeta /(root) > Save.
+4. La dirección queda como https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/
+5. Abrirla en el celular y "Añadir a pantalla de inicio" (iPhone) o "Instalar" (Android/PC).

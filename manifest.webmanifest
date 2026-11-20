@@ -1,33 +1,18 @@
 {
-  "name": "Escáner de Remitos",
+  "name": "Escáner de Remitos · LAG Panificados",
   "short_name": "Remitos",
-  "description": "Escanea remitos con la cámara, lee las cantidades y guarda todo en un PDF con totales.",
+  "description": "Escaneá los remitos con la cámara, cargá las cantidades recepcionadas y guardá todo en un PDF.",
   "start_url": "./index.html",
   "scope": "./",
   "id": "./index.html",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#1b1d21",
-  "theme_color": "#25282e",
+  "background_color": "#faf6f0",
+  "theme_color": "#741420",
   "lang": "es",
   "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icons/icon-maskable-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

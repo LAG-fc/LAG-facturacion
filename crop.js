@@ -323,17 +323,14 @@
   // Endereza el cuadrilátero quad=[TL,TR,BR,BL] (coordenadas de img) a un rectángulo.
   // Proporción real de la hoja del remito (ancho / alto): 0,83.
   const PAGE_RATIO = 0.83;
-  function warp(img, quad, maxSide, opts) {
+  function warp(img, quad, maxSide) {
     const [TL, TR, BR, BL] = quad;
     let outW = Math.round(Math.max(dist(TL, TR), dist(BL, BR)));
     let outH = Math.round(Math.max(dist(TL, BL), dist(TR, BR)));
     // La hoja siempre es un rectángulo con la proporción del remito: se conserva el lado más
     // largo medido y el otro se calcula (así la perspectiva o un dedo en una esquina no deforman).
-    // (Para recortes interiores, como la columna de cantidades, se usa noSnap.)
-    if (!(opts && opts.noSnap)) {
-      if (outH >= outW) outW = Math.round(outH * PAGE_RATIO);
-      else outH = Math.round(outW * PAGE_RATIO);
-    }
+    if (outH >= outW) outW = Math.round(outH * PAGE_RATIO);
+    else outH = Math.round(outW * PAGE_RATIO);
     const s = Math.min(1, (maxSide || 2200) / Math.max(outW, outH));
     outW = Math.max(2, Math.round(outW * s));
     outH = Math.max(2, Math.round(outH * s));
@@ -365,26 +362,7 @@
     return { data: out, width: outW, height: outH };
   }
 
-  // Punto de la hoja enderezada (fx, fy entre 0 y 1) -> posición en la foto original.
-  function mapPoint(quad, fx, fy) {
-    const H = homography([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }], quad);
-    const den = H[6] * fx + H[7] * fy + 1;
-    return { x: (H[0] * fx + H[1] * fy + H[2]) / den, y: (H[3] * fx + H[4] * fy + H[5]) / den };
-  }
-
-  // Cuadrilátero (en la foto original) de un recuadro {x0,x1,y0,y1} dado como fracción de la hoja.
-  function subQuad(quad, box) {
-    return [mapPoint(quad, box.x0, box.y0), mapPoint(quad, box.x1, box.y0), mapPoint(quad, box.x1, box.y1), mapPoint(quad, box.x0, box.y1)];
-  }
-
-  // Gira el cuadrilátero k cuartos de vuelta en sentido horario (equivale a girar la foto).
-  function rotateQuad(quad, k) {
-    let q = quad.slice();
-    for (let i = 0; i < ((k % 4) + 4) % 4; i++) q = [q[3], q[0], q[1], q[2]];
-    return q;
-  }
-
-  const api = { detectPaper, warp, mapPoint, subQuad, rotateQuad, PAGE_RATIO };
+  const api = { detectPaper, warp, PAGE_RATIO };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.Crop = api;
 })(typeof self !== "undefined" ? self : this);

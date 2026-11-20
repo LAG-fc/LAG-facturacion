@@ -1,55 +1,61 @@
 (() => {
   "use strict";
-  const APP_VERSION = "4.3";
-  document.addEventListener("DOMContentLoaded", () => { const a = document.getElementById("verTag"), b = document.getElementById("verLabel"); if (a) a.textContent = "v" + APP_VERSION; if (b) b.textContent = APP_VERSION; });
+  const APP_VERSION = "5.0";
+  const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
-  const video = $("video"), overlay = $("overlay"), videoWrap = $("videoWrap");
-  const cameraSelect = $("cameraSelect"), filterSelect = $("filterSelect"), autoCropChk = $("autoCrop");
-  const captureBtn = $("captureBtn"), saveBtn = $("saveBtn"), clearBtn = $("clearBtn"), settingsBtn = $("settingsBtn");
-  const thumbs = $("thumbs"), countEl = $("count"), emptyEl = $("empty");
-  const statusEl = $("status"), cameraMsg = $("cameraMsg"), flash = $("flash");
-  const totalsTable = $("totalsTable"), totalsEmpty = $("totalsEmpty");
-  const nameDialog = $("nameDialog"), nameForm = $("nameForm"), nameInput = $("nameInput"), cancelName = $("cancelName");
-  const settingsDialog = $("settingsDialog"), keyInput = $("keyInput"), keyMsg = $("keyMsg");
-  const sensSelect = $("sensSelect");
-  const uploadBtn = $("uploadBtn"), fileInput = $("fileInput"), pagesPanel = $("pagesPanel");
-  const catalogInput = $("catalogInput"), hiResChk = $("hiResChk");
-  const editWrap = $("editWrap");
-  const editDialog = $("editDialog"), editRowsEl = $("editRows"), editImg = $("editImg"), editNum = $("editNum"), editErr = $("editErr");
 
-  const DEFAULTS = {
-    apiKey: "", sensitivity: "normal", autoCrop: true,
-    filterMode: "mejorado", hiRes: true, catalog: OCR.DEFAULT_CATALOG.join("\n"), catalogVersion: 5
-  };
+  const video = $("video"), overlay = $("overlay"), videoWrap = $("videoWrap"), detectPill = $("detectPill");
+  const cameraSelect = $("cameraSelect"), filterSelect = $("filterSelect"), autoCropChk = $("autoCrop");
+  const captureBtn = $("captureBtn"), captureLabel = $("captureLabel"), uploadBtn = $("uploadBtn"), fileInput = $("fileInput");
+  const saveBtn = $("saveBtn"), clearBtn = $("clearBtn"), settingsBtn = $("settingsBtn"), totalsBtn = $("totalsBtn");
+  const thumbs = $("thumbs"), countEl = $("count"), emptyEl = $("empty"), pagesPanel = $("pagesPanel");
+  const statusEl = $("status"), cameraMsg = $("cameraMsg"), flash = $("flash"), totalsInfo = $("totalsInfo");
+  const settingsDialog = $("settingsDialog"), catalogInput = $("catalogInput"), hiResChk = $("hiResChk");
+  const msgDialog = $("msgDialog"), msgText = $("msgText"), msgOk = $("msgOk"), msgCancel = $("msgCancel");
+  const totalsDialog = $("totalsDialog"), totalsForm = $("totalsForm"), totalsRows = $("totalsRows"), totalsErr = $("totalsErr");
+  const totalsOk = $("totalsOk"), nameField = $("nameField"), nameInput = $("nameInput"), totalsHint = $("totalsHint");
+  const previewDialog = $("previewDialog"), previewImg = $("previewImg");
+
+  const DEFAULT_CATALOG = [
+    "PAN MIGNON BLANCO", "PAN MIGNON DE SALVADO", "PAN FRANCES", "PAN MIGNON BLANCO SIN SAL",
+    "PAN DE SALVADO SIN SAL", "FIGACITAS DE MANTECA", "LIBRITOS DE GRASA", "BIZCOCHUELO DE VAINILLA 50 X 80",
+    "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE",
+    "SANDWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
+  ];
+  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", hiRes: true, catalog: DEFAULT_CATALOG.join("\n") };
   let settings = { ...DEFAULTS };
   let stream = null;
-  let capturing = false;
-  let pages = [];   // {id, blob, ocrBlob, w, h, url, status: reading|ok|alert|manual, rows, runId}
+  let stillOk = null;               // null = sin probar; true/false = se puede / no se puede la foto de máxima resolución
+  let pages = [];                   // {id, blob, w, h, url, thumbUrl, status: processing|ok|error, busy}
   let nextPageId = 1;
+  let epoch = 0;                    // sube cada vez que se vacía todo: lo que estaba en proceso se descarta
+  let grabbing = false;
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const toBlob = (canvas, q = 0.9) => new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
+  const anyDialogOpen = () => !!document.querySelector("dialog[open]");
 
   // ---------- Ajustes (se guardan en el navegador) ----------
   function loadSettings() {
     try {
       const st = { ...DEFAULTS, ...JSON.parse(localStorage.getItem("settings") || "{}") };
-      // La lista de productos ahora es el ORDEN de las filas: se actualiza una sola vez a la lista nueva.
-      if (st.catalogVersion !== DEFAULTS.catalogVersion) { st.catalog = DEFAULTS.catalog; st.catalogVersion = DEFAULTS.catalogVersion; }
-      return Promise.resolve(st);
-    } catch (e) { return Promise.resolve({ ...DEFAULTS }); }
+      ["apiKey", "sensitivity", "decimals", "catalogVersion"].forEach((k) => delete st[k]);   // restos de versiones anteriores
+      localStorage.removeItem("visionUsage");
+      return st;
+    } catch (e) { return { ...DEFAULTS }; }
   }
-  function persistSettings() {
-    try { localStorage.setItem("settings", JSON.stringify(settings)); } catch (e) { /* nada */ }
-  }
+  function persistSettings() { try { localStorage.setItem("settings", JSON.stringify(settings)); } catch (e) { /* nada */ } }
+  const catalogList = () => String(settings.catalog || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
 
+  let statusTimer = null;
   function setStatus(msg, ms = 3500) {
     statusEl.textContent = msg;
-    if (ms) setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ""; }, ms);
+    clearTimeout(statusTimer);
+    if (ms) statusTimer = setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ""; }, ms);
   }
-  const anyDialogOpen = () => nameDialog.open || settingsDialog.open || editDialog.open || msgDialog.open;
-  const toBlob = (canvas, q = 0.92) => new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
 
-  // Avisos y preguntas propios de la página. Los cuadros nativos (alert/confirm) congelan la cámara y
-  // frenan todo en el celular, por eso no se usan.
-  const msgDialog = $("msgDialog"), msgText = $("msgText"), msgOk = $("msgOk"), msgCancel = $("msgCancel");
+  // Avisos y preguntas propios de la página. Los cuadros nativos (alert/confirm) congelan la cámara en el
+  // celular, por eso no se usan.
   function askConfirm(text, okLabel, cancelLabel) {
     return new Promise((resolve) => {
       msgText.textContent = text;
@@ -64,22 +70,6 @@
     });
   }
   const showMessage = (text) => askConfirm(text, "Entendido", null);
-
-  // Cuántas lecturas de Cloud Vision se usaron este mes (en este dispositivo). Gratis hasta 1.000 por mes.
-  const FREE_READS = 1000;
-  function monthKey() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
-  function getUsage() {
-    try { const u = JSON.parse(localStorage.getItem("visionUsage") || "{}"); return u.m === monthKey() ? u.n || 0 : 0; } catch (e) { return 0; }
-  }
-  function addUsage(n) {
-    try { localStorage.setItem("visionUsage", JSON.stringify({ m: monthKey(), n: getUsage() + n })); } catch (e) { /* nada */ }
-    updateUsageLabels();
-  }
-  function updateUsageLabels() {
-    const n = getUsage();
-    const el = $("usageLabel");
-    if (el) el.textContent = "Lecturas de Cloud Vision usadas este mes en este dispositivo: " + n + " de " + FREE_READS + " gratis" + (n >= FREE_READS * 0.9 ? " ⚠ cerca del límite gratuito" : "") + ".";
-  }
 
   // ---------- Cámara ----------
   async function startCamera(deviceId) {
@@ -166,59 +156,14 @@
     return det.quad.map((p) => ({ x: p.x * kx, y: p.y * ky }));
   }
 
-  // ---------- Recuadros en vivo, en orden: 1) hoja  2) columna de cantidades  3) filas ----------
-  const COLORS = { page: "#2ee06b", table: "#4da3ff", rows: "#ffd24d", filled: "#ff9d2e" };
-  const stepsBadge = $("stepsBadge");
-  const live = { an: null, stable: 0, analyzing: false, shown: 0, ticks: 0, runs: 0 };
-  const analysisCanvas = document.createElement("canvas");
-  const actx = analysisCanvas.getContext("2d", { willReadFrequently: true });
-
-  // Con un cuadro del video: ubica la tabla, ajusta las 19 filas a los renglones y calcula la probabilidad
-  // de que cada fila tenga un número (el mismo cálculo que se hace al sacar la foto).
-  function analyzeLive(quad) {
-    const vw = video.videoWidth, vh = video.videoHeight;
-    const s = Math.min(1, 1600 / Math.max(vw, vh));
-    analysisCanvas.width = Math.round(vw * s); analysisCanvas.height = Math.round(vh * s);
-    actx.drawImage(video, 0, 0, analysisCanvas.width, analysisCanvas.height);
-    const src = actx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
-    const q = quad.map((p) => ({ x: p.x * s, y: p.y * s }));
-    const page = canvasFromImageData(Crop.warp(src, q, 800));
-    const pc = page.getContext("2d", { willReadFrequently: true });
-    const d = pc.getImageData(0, 0, page.width, page.height);
-    Enhance.enhance(d); pc.putImageData(d, 0, 0);
-    // cada 4 análisis se vuelven a probar todos los giros; el resto, el que ya se conocía
-    const hint = live.an && live.runs % 4 !== 0 ? live.an.deg : undefined;
-    const o = bestOrientation(page, hint);
-    const table = o.table;
-    const strip = makeStripCanvas(table, o.deg ? rotateCanvas(analysisCanvas, o.deg) : analysisCanvas, Crop.rotateQuad(q, o.deg / 90));
-    const m = measureStrip(strip);
-    return { table, deg: o.deg, rowFracs: m.rowFracs, rowMeta: m.rowMeta, t: Date.now() };
-  }
-
-  function maybeAnalyzeLive(quad) {
-    if (live.analyzing || live.stable < 2) return;
-    if (live.an && Date.now() - live.an.t < 700) return;
-    live.analyzing = true;
-    setTimeout(() => {
-      try { live.an = analyzeLive(quad); live.runs++; } catch (e) { console.warn("análisis en vivo:", e); live.an = null; }
-      live.analyzing = false;
-    }, 0);
-  }
-
-  function setSteps(n, approx) {
-    const key = n + (approx ? 0.5 : 0);
-    if (live.shown === key) return;
-    live.shown = key;
-    const t = ["", "①", "①②", "①②③"][n];
-    stepsBadge.hidden = n === 0;
-    stepsBadge.textContent = n === 0 ? "" : t + " " + ["", "Hoja", "Hoja → Cantidades", "Hoja → Cantidades → Filas"][n] +
-      (approx && n >= 2 ? " (posición estimada)" : "");
-  }
-
-  function poly(ctx, pts, close) {
-    ctx.beginPath();
-    pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-    if (close) ctx.closePath();
+  // ---------- Recuadro en vivo de la hoja ----------
+  let stable = 0, pillState = "";
+  function setPill(state) {
+    if (pillState === state) return;
+    pillState = state;
+    detectPill.hidden = !state;
+    detectPill.className = "pill" + (state === "ok" ? " ok" : "");
+    detectPill.textContent = state === "ok" ? "Hoja detectada · lista para sacar la foto" : state === "search" ? "Buscando la hoja…" : "";
   }
 
   function drawLive(quad) {
@@ -227,72 +172,29 @@
     if (overlay.height !== ch) overlay.height = ch;
     const ctx = overlay.getContext("2d");
     ctx.clearRect(0, 0, cw, ch);
-    if (!quad || !video.videoWidth) { setSteps(0); return; }
+    if (!autoCropChk.checked || !video.videoWidth) { setPill(""); return; }
+    if (!quad) { setPill("search"); return; }
     const vw = video.videoWidth, vh = video.videoHeight;
     const sc = Math.min(cw / vw, ch / vh);
     const ox = (cw - vw * sc) / 2, oy = (ch - vh * sc) / 2;
-    const scr = (p) => ({ x: ox + p.x * sc, y: oy + p.y * sc });
-
-    // 1) hoja completa
-    poly(ctx, quad.map(scr), true);
+    ctx.beginPath();
+    quad.forEach((p, i) => { const x = ox + p.x * sc, y = oy + p.y * sc; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.closePath();
     ctx.fillStyle = "rgba(46,158,91,.14)"; ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = COLORS.page; ctx.stroke();
-    let steps = 1, approx = false;
-
-    const an = live.an;
-    if (an && an.table && live.stable >= 2) {
-      live.ticks++;
-      approx = !an.table.ok;
-      // 2) recuadro interior de la columna de cantidades
-      const rq = Crop.rotateQuad(quad, an.deg / 90);
-      const T = an.table;
-      const at = (fx, fy) => scr(Crop.mapPoint(rq, fx, fy));
-      const box = [at(T.x0, T.y0), at(T.x1, T.y0), at(T.x1, T.y1), at(T.x0, T.y1)];
-      poly(ctx, box, true);
-      ctx.fillStyle = "rgba(77,163,255,.16)"; ctx.fill();
-      ctx.lineWidth = 2.5; ctx.strokeStyle = COLORS.table;
-      ctx.setLineDash(approx ? [8, 6] : []); ctx.stroke(); ctx.setLineDash([]);
-      steps = 2;
-      if (live.ticks >= 2 && an.rowFracs && an.rowFracs.length > 1) {
-        // 3) las 19 filas, siguiendo la perspectiva de la hoja; las que tienen número, en naranja
-        const fr = an.rowFracs, N = fr.length - 1, H = T.y1 - T.y0;
-        const yAt = (k) => T.y0 + H * fr[k];
-        for (const r of an.rowMeta || []) {
-          if (!r.nonEmpty) continue;
-          const i = r.index - 1;
-          poly(ctx, [at(T.x0, yAt(i)), at(T.x1, yAt(i)), at(T.x1, yAt(i + 1)), at(T.x0, yAt(i + 1))], true);
-          ctx.fillStyle = r.sure ? "rgba(255,157,46,.40)" : "rgba(255,157,46,.20)"; ctx.fill();
-        }
-        ctx.strokeStyle = COLORS.rows; ctx.lineWidth = 1.2; ctx.fillStyle = COLORS.rows;
-        ctx.font = "bold 11px system-ui, sans-serif";
-        for (let i = 0; i <= N; i++) {
-          poly(ctx, [at(T.x0, yAt(i)), at(T.x1, yAt(i))], false); ctx.stroke();
-          if (i < N) {
-            const m = at(T.x0, (yAt(i) + yAt(i + 1)) / 2);
-            ctx.fillText(String(i + 1), m.x + 3, m.y + 4);
-          }
-        }
-        for (const r of an.rowMeta || []) {     // probabilidad de que la fila tenga un número
-          if (r.p < 0.15) continue;
-          const i = r.index - 1, m = at(T.x1, (yAt(i) + yAt(i + 1)) / 2);
-          ctx.fillStyle = r.nonEmpty ? COLORS.filled : "rgba(255,255,255,.6)";
-          ctx.fillText(Math.round(r.p * 100) + "%", m.x + 4, m.y + 4);
-        }
-        steps = 3;
-      }
-    } else if (!an) { live.ticks = 0; }
-    setSteps(steps, approx);
+    ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.strokeStyle = "#2ee06b"; ctx.stroke();
+    setPill("ok");
   }
 
   function liveLoop() {
     try {
-      if (autoCropChk.checked && video.videoWidth && !capturing && !document.hidden) {
-        const quad = detectQuad(video, video.videoWidth, video.videoHeight);
-        if (quad) { live.stable++; maybeAnalyzeLive(quad); }
-        else { live.stable = 0; live.an = null; live.ticks = 0; }
-        drawLive(quad);
+      if (autoCropChk.checked && video.videoWidth && !document.hidden) {
+        if (!grabbing) {
+          const quad = detectQuad(video, video.videoWidth, video.videoHeight);
+          stable = quad ? stable + 1 : 0;
+          drawLive(quad);
+        }
       } else {
-        live.stable = 0;
+        stable = 0;
         drawLive(null);
       }
       watchCamera();
@@ -300,17 +202,40 @@
     setTimeout(liveLoop, 400);
   }
 
-  // ---------- Filtros (idéntico a la versión 1) ----------
+  // ---------- Imágenes ----------
+  // En celulares (sobre todo iPhone) la memoria es limitada: se trabaja con imágenes algo más chicas.
+  const IS_MOBILE = (window.matchMedia && matchMedia("(pointer: coarse)").matches) || /iPhone|iPad|Android/i.test(navigator.userAgent);
+  const MAX_SIDE = IS_MOBILE ? 2400 : 2800;     // tamaño máximo de cada página del PDF
+  const START_SIDE = IS_MOBILE ? 3200 : 4200;   // tamaño máximo con el que se empieza a trabajar
+
+  function fitCanvas(src, maxSide) {
+    const sc = Math.min(1, maxSide / Math.max(src.width, src.height));
+    if (sc >= 1) return src;
+    const c = document.createElement("canvas");
+    c.width = Math.round(src.width * sc);
+    c.height = Math.round(src.height * sc);
+    const ctx = c.getContext("2d");
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+    return c;
+  }
+  function canvasFromImageData(out) {
+    const c = document.createElement("canvas");
+    c.width = out.width; c.height = out.height;
+    c.getContext("2d").putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
+    return c;
+  }
+  const imageDataOf = (c) => c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height);
+
   function applyFilter(canvas, mode) {
     if (mode === "color") return;
     const ctx = canvas.getContext("2d");
     const w = canvas.width, h = canvas.height;
     const img = ctx.getImageData(0, 0, w, h);
+    if (mode === "mejorado") { Enhance.enhance(img); ctx.putImageData(img, 0, 0); return; }
     const d = img.data;
     const gray = new Uint8ClampedArray(w * h);
-    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
-      gray[p] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
-    }
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) gray[p] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
     if (mode === "gris") {
       let min = 255, max = 0;
       for (let p = 0; p < gray.length; p++) { if (gray[p] < min) min = gray[p]; if (gray[p] > max) max = gray[p]; }
@@ -319,7 +244,7 @@
         const v = ((gray[p] - min) * 255) / range;
         d[i] = d[i + 1] = d[i + 2] = v;
       }
-    } else {
+    } else {   // documento: blanco y negro con umbral adaptativo
       const W = w + 1;
       const integral = new Float64Array(W * (h + 1));
       for (let y = 1; y <= h; y++) {
@@ -346,294 +271,113 @@
     ctx.putImageData(img, 0, 0);
   }
 
-  // ---------- Procesamiento de imágenes (cámara y fotos subidas) ----------
-  // En celulares (sobre todo iPhone) la memoria es limitada: se trabaja con imágenes algo más chicas.
-  const IS_MOBILE = (window.matchMedia && matchMedia("(pointer: coarse)").matches) || /iPhone|iPad|Android/i.test(navigator.userAgent);
-  const MAX_SIDE = IS_MOBILE ? 2400 : 2800;     // tamaño máximo de cada página del PDF
-  const START_SIDE = IS_MOBILE ? 3200 : 4200;   // tamaño máximo con el que se empieza a trabajar
-
-  function fitCanvas(src, maxSide) {
-    const sc = Math.min(1, maxSide / Math.max(src.width, src.height));
-    if (sc >= 1) return src;
-    const c = document.createElement("canvas");
-    c.width = Math.round(src.width * sc);
-    c.height = Math.round(src.height * sc);
-    const ctx = c.getContext("2d");
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(src, 0, 0, c.width, c.height);
-    return c;
-  }
-
-  function cloneCanvas(src) {
-    const c = document.createElement("canvas");
-    c.width = src.width; c.height = src.height;
-    c.getContext("2d", { willReadFrequently: true }).drawImage(src, 0, 0);
-    return c;
-  }
-
-  function canvasFromImageData(out) {
-    const c = document.createElement("canvas");
-    c.width = out.width; c.height = out.height;
-    c.getContext("2d").putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
-    return c;
-  }
-
-  // Gira un canvas "deg" grados en sentido horario (0, 90, 180 o 270).
-  function rotateCanvas(src, deg) {
-    deg = ((deg % 360) + 360) % 360;
-    if (!deg) return src;
+  async function rotateBlob(blob, deg) {
+    const bmp = await createImageBitmap(blob);
     const c = document.createElement("canvas");
     const swap = deg === 90 || deg === 270;
-    c.width = swap ? src.height : src.width; c.height = swap ? src.width : src.height;
-    const ctx = c.getContext("2d", { willReadFrequently: true });
+    c.width = swap ? bmp.height : bmp.width; c.height = swap ? bmp.width : bmp.height;
+    const ctx = c.getContext("2d");
     ctx.translate(c.width / 2, c.height / 2);
     ctx.rotate(deg * Math.PI / 180);
-    ctx.drawImage(src, -src.width / 2, -src.height / 2);
-    return c;
+    ctx.drawImage(bmp, -bmp.width / 2, -bmp.height / 2);
+    if (bmp.close) bmp.close();
+    return { canvas: c, blob: await toBlob(c, 0.9) };
   }
 
-  const imageDataOf = (c) => c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height);
-
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  let epoch = 0;   // sube cada vez que se vacía todo: lo que estaba en proceso se descarta
-
-  // Busca la tabla en la hoja. Una hoja derecha tiene la columna de cantidades a la izquierda; si la
-  // hoja está de costado o al revés, se prueban los giros posibles y gana el que muestra la tabla bien.
-  function bestOrientation(enh, hintDeg) {
-    const portrait = enh.height >= enh.width;
-    const options = portrait ? [0, 180] : [90, 270];
-    if (hintDeg !== undefined && options.includes(hintDeg)) {    // se prueba primero el giro que ya se sabía
-      const r = Layout.findTable(imageDataOf(rotateCanvas(enh, hintDeg)));
-      if (r.ok) return { deg: hintDeg, score: r.score, table: r };
-    }
-    let best = null;
-    for (const deg of options) {
-      const r = Layout.findTable(imageDataOf(rotateCanvas(enh, deg)));
-      const score = r.ok ? r.score : -1;
-      if (!best || score > best.score + 1e-9) best = { deg, score, table: r };
-    }
-    return best;
-  }
-
-  // Recorta SOLO la columna de cantidades (a máxima resolución) y la mejora. Devuelve un canvas.
-  function makeStripCanvas(table, srcCanvas, quadForSrc) {
-    let strip;
-    if (quadForSrc) {
-      strip = canvasFromImageData(Crop.warp(imageDataOf(srcCanvas), Crop.subQuad(quadForSrc, table), 2600, { noSnap: true }));
-    } else {
-      const sx = Math.round(table.x0 * srcCanvas.width), sy = Math.round(table.y0 * srcCanvas.height);
-      const sw = Math.max(8, Math.round((table.x1 - table.x0) * srcCanvas.width));
-      const sh = Math.max(8, Math.round((table.y1 - table.y0) * srcCanvas.height));
-      strip = document.createElement("canvas");
-      strip.width = sw; strip.height = sh;
-      strip.getContext("2d").drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
-    }
-    const ctx = strip.getContext("2d", { willReadFrequently: true });
-    const d = ctx.getImageData(0, 0, strip.width, strip.height);
-    Enhance.enhance(d);
-    ctx.putImageData(d, 0, 0);
-    return strip;
-  }
-
-  // Recorte de UNA fila para mandarlo a Cloud Vision: la escritura con aire blanco alrededor y agrandada.
-  async function cropRowBlob(strip, bbox, pitch) {
-    const padX = Math.round(pitch * 0.6), padY = Math.round(pitch * 0.25);
-    const sx = Math.max(0, bbox.x0 - padX), sx1 = Math.min(strip.width, bbox.x1 + padX);
-    const sy = Math.max(0, bbox.y0 - padY), sy1 = Math.min(strip.height, bbox.y1 + padY);
-    const inkH = Math.max(1, bbox.y1 - bbox.y0 + 1);
-    const scale = Math.min(4, Math.max(1, 110 / inkH));
-    const margin = Math.round(pitch * 0.5 * scale);
-    const w = Math.round((sx1 - sx) * scale), h = Math.round((sy1 - sy) * scale);
+  // Abre una imagen respetando la orientación EXIF (las fotos de celular vienen "acostadas").
+  async function fileToCanvas(f) {
     const c = document.createElement("canvas");
-    c.width = w + 2 * margin; c.height = h + 2 * margin;
-    const ctx = c.getContext("2d");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(strip, sx, sy, sx1 - sx, sy1 - sy, margin, margin, w, h);
-    return toBlob(c, 0.92);
-  }
-
-  // Mide la tira: grilla de filas, renglones borrados y probabilidad de que cada fila tenga un número.
-  function measureStrip(strip) {
-    const ctx = strip.getContext("2d", { willReadFrequently: true });
-    const img = ctx.getImageData(0, 0, strip.width, strip.height);
-    const grid = Rows.fitGrid(img, Rows.N_ROWS);
-    Rows.removeRuling(img, grid);
-    ctx.putImageData(img, 0, 0);
-    const ink = Rows.rowInk(img, grid);
-    const rowFracs = [];
-    for (let k = 0; k <= grid.n; k++) rowFracs.push(Math.min(1, Math.max(0, (grid.top + k * grid.pitch) / strip.height)));
-    const rowMeta = ink.map((r, i) => ({ index: i + 1, p: r.p, nonEmpty: r.nonEmpty, sure: r.sure, ambiguous: r.ambiguous, alt: r.alt }));
-    return { img, grid, ink, rowFracs, rowMeta, gridFitted: grid.fitted };
-  }
-
-  // Además arma, para cada fila con número, el recorte que se manda a Cloud Vision (solo con los trazos de esa fila).
-  async function analyzeStrip(strip) {
-    const m = measureStrip(strip);
-    const tmp = document.createElement("canvas");
-    tmp.width = strip.width; tmp.height = strip.height;
-    const tctx = tmp.getContext("2d");
-    const rowCrops = {};
-    for (let i = 0; i < m.ink.length; i++) {
-      if (!m.ink[i].nonEmpty) continue;
-      const masked = Rows.maskRow(m.img, m.ink, i);
-      tctx.putImageData(new ImageData(masked.data, masked.width, masked.height), 0, 0);
-      const blob = await cropRowBlob(tmp, m.ink[i].bbox, m.grid.pitch);
-      rowCrops[i + 1] = { blob, url: URL.createObjectURL(blob) };
-    }
-    return { rowFracs: m.rowFracs, rowMeta: m.rowMeta, rowCrops, gridFitted: m.gridFitted };
-  }
-
-  function freeAnalysis(p) {
-    for (const k of Object.keys(p.rowCrops || {})) URL.revokeObjectURL(p.rowCrops[k].url);
-    p.rowCrops = {};
-  }
-
-  // Recorta el papel, mejora la imagen y la agrega como una página nueva.
-  async function addPageFromCanvas(source, fromFile, startEpoch) {
-    const myEpoch = startEpoch === undefined ? epoch : startEpoch;   // la "época" con la que empezó el trabajo
-    const full = fitCanvas(source, START_SIDE);
-    let work, note = "", quad = null;
-    if (autoCropChk.checked) {
-      quad = detectQuad(full, full.width, full.height);
-      if (quad) {
-        work = canvasFromImageData(Crop.warp(imageDataOf(full), quad, MAX_SIDE));
-      } else {
-        work = fitCanvas(full, MAX_SIDE);
-        note = " · sin recorte (no se distinguió el borde del papel)";
-      }
-    } else {
-      work = fitCanvas(full, MAX_SIDE);
-    }
-
-    // "Color mejorado": es la imagen del PDF en el modo por defecto y sirve para ubicar la tabla.
-    let enh = cloneCanvas(work);
-    const ectx = enh.getContext("2d", { willReadFrequently: true });
-    const imgData = ectx.getImageData(0, 0, enh.width, enh.height);
-    Enhance.enhance(imgData);
-    ectx.putImageData(imgData, 0, 0);
-
-    // Orientación según la tabla, recuadro de cantidades y filas
-    const hint = live.an && live.an.deg !== undefined && Date.now() - live.an.t < 3000 && !fromFile ? live.an.deg : undefined;
-    const o = bestOrientation(enh, hint);
-    if (o.deg) { work = rotateCanvas(work, o.deg); enh = rotateCanvas(enh, o.deg); }
-    const table = o.table;
-    let an = { rowFracs: [], rowMeta: [], rowCrops: {}, gridFitted: false };
     try {
-      const strip = makeStripCanvas(table, o.deg ? rotateCanvas(full, o.deg) : full, quad ? Crop.rotateQuad(quad, o.deg / 90) : null);
-      an = await analyzeStrip(strip);
-    } catch (e) { console.error("No se pudo analizar la columna de cantidades:", e); }
-    if (!table.ok) note += " · no se encontró la tabla: revisá las cantidades (⚠)";
-    const ocrBlob = await toBlob(enh, 0.92);
+      const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
+      c.width = bmp.width; c.height = bmp.height;
+      c.getContext("2d").drawImage(bmp, 0, 0);
+      if (bmp.close) bmp.close();
+      return c;
+    } catch (e) { /* se prueba con <img> */ }
+    const url = URL.createObjectURL(f);
+    try {
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("imagen inválida")); i.src = url; });
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext("2d").drawImage(img, 0, 0);
+      return c;
+    } finally { URL.revokeObjectURL(url); }
+  }
 
-    let blob = ocrBlob;
-    const mode = filterSelect.value;
-    if (mode === "color") {
-      blob = await toBlob(work, 0.92);
-    } else if (mode !== "mejorado") {
-      const c2 = cloneCanvas(enh);
-      applyFilter(c2, mode);
-      blob = await toBlob(c2, 0.92);
+  // Recorta el papel (con perspectiva corregida) y aplica el modo de imagen elegido.
+  async function buildPage(source, mode, autoCrop) {
+    const full = fitCanvas(source, START_SIDE);
+    let work, cropped = false;
+    if (autoCrop) {
+      const quad = detectQuad(full, full.width, full.height);
+      if (quad) { work = canvasFromImageData(Crop.warp(imageDataOf(full), quad, MAX_SIDE)); cropped = true; }
+      else work = fitCanvas(full, MAX_SIDE);
+    } else work = fitCanvas(full, MAX_SIDE);
+    await sleep(0);
+    if (work === source || work === full) {            // no tocar el original
+      const c = document.createElement("canvas"); c.width = work.width; c.height = work.height;
+      c.getContext("2d").drawImage(work, 0, 0); work = c;
     }
+    applyFilter(work, mode);
+    await sleep(0);
+    const blob = await toBlob(work, 0.9);
+    const thumb = await toBlob(fitCanvas(work, 440), 0.8);
+    return { blob, thumb, w: work.width, h: work.height, cropped };
+  }
 
-    const page = {
-      id: nextPageId++, blob, ocrBlob, w: work.width, h: work.height,
-      table: { x0: table.x0, x1: table.x1, y0: table.y0, y1: table.y1 }, layoutOk: table.ok,
-      rowFracs: an.rowFracs, rowMeta: an.rowMeta, rowCrops: an.rowCrops,
-      stage: 0, url: URL.createObjectURL(blob), status: "reading", rows: [], runId: 0
-    };
-    if (myEpoch !== epoch) {            // mientras tanto se apretó "Vaciar todo": se descarta
-      URL.revokeObjectURL(page.url); freeAnalysis(page);
-      return { page: null, note: "", w: work.width, h: work.height, discarded: true };
-    }
+  // ---------- Cola de trabajo: se puede seguir sacando fotos mientras se procesan ----------
+  const MAX_PENDING = 3;
+  const queue = [];
+  let working = false;
+  const pending = () => queue.length + (working ? 1 : 0);
+
+  function updateBusyUI() {
+    const full = pending() >= MAX_PENDING;
+    captureBtn.disabled = grabbing || full;
+    captureLabel.textContent = full ? "Procesando…" : "Sacar foto";
+  }
+
+  function enqueue(job) {
+    const page = { id: nextPageId++, status: "processing", url: "", thumbUrl: "" };
     pages.push(page);
-    render();
+    queue.push({ ...job, page, epoch, mode: filterSelect.value, autoCrop: autoCropChk.checked });
+    syncCards();
     thumbs.scrollTop = thumbs.scrollHeight;
-    playStages(page);
-    runOcr(page);
-    return { page, note, w: work.width, h: work.height };
+    pump();
+    updateBusyUI();
+    return page;
   }
 
-  // Muestra los recuadros de la página uno por uno: 1) hoja  2) cantidades  3) filas  4) filas con número
-  async function playStages(page) {
-    for (let s = 1; s <= 4; s++) {
-      if (!pages.includes(page)) return;
-      page.stage = s;
-      refreshOverlay(page);
-      await sleep(s === 1 ? 250 : 500);
-    }
-  }
-
-  function drawPageOverlay(canvas, page) {
-    const W = canvas.width, H = canvas.height, ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, W, H);
-    const st = page.stage || 0;
-    if (!st) return;
-    const lw = Math.max(2, W / 160);
-    // 1) hoja completa
-    ctx.lineWidth = lw * 1.6; ctx.strokeStyle = COLORS.page;
-    ctx.strokeRect(lw, lw, W - 2 * lw, H - 2 * lw);
-    const T = page.table;
-    const X0 = T.x0 * W, X1 = T.x1 * W, Y0 = T.y0 * H, Y1 = T.y1 * H;
-    if (st >= 2) {   // 2) recuadro interior de cantidades
-      ctx.fillStyle = "rgba(77,163,255,.14)"; ctx.fillRect(X0, Y0, X1 - X0, Y1 - Y0);
-      ctx.lineWidth = lw * 1.4; ctx.strokeStyle = COLORS.table; ctx.strokeRect(X0, Y0, X1 - X0, Y1 - Y0);
-    }
-    const fr = page.rowFracs || [];
-    if (st >= 3 && fr.length > 1) {   // 3) filas
-      ctx.lineWidth = Math.max(1, lw * 0.5); ctx.strokeStyle = COLORS.rows; ctx.fillStyle = COLORS.rows;
-      ctx.font = "bold " + Math.max(8, Math.round((Y1 - Y0) / (fr.length - 1) * 0.55)) + "px system-ui, sans-serif";
-      for (let k = 0; k < fr.length; k++) {
-        const y = Y0 + fr[k] * (Y1 - Y0);
-        ctx.beginPath(); ctx.moveTo(X0, y); ctx.lineTo(X1, y); ctx.stroke();
-        if (k < fr.length - 1) ctx.fillText(String(k + 1), X0 + 3, y + (fr[k + 1] - fr[k]) * (Y1 - Y0) * 0.72);
-      }
-    }
-    if (st >= 4) {   // 4) filas con número (las únicas que se mandan a leer) y su probabilidad
-      ctx.font = "bold " + Math.max(8, Math.round((Y1 - Y0) / Math.max(1, fr.length - 1) * 0.5)) + "px system-ui, sans-serif";
-      for (const r of page.rowMeta || []) {
-        const ya = Y0 + fr[r.index - 1] * (Y1 - Y0), yb = Y0 + fr[r.index] * (Y1 - Y0);
-        if (r.nonEmpty) {
-          ctx.fillStyle = r.sure ? "rgba(255,157,46,.40)" : "rgba(255,157,46,.20)"; ctx.fillRect(X0, ya, X1 - X0, yb - ya);
-          ctx.lineWidth = lw * 1.2; ctx.strokeStyle = COLORS.filled;
-          ctx.setLineDash(r.sure ? [] : [lw * 2, lw * 1.5]); ctx.strokeRect(X0, ya, X1 - X0, yb - ya); ctx.setLineDash([]);
+  async function pump() {
+    if (working) return;
+    working = true;
+    try {
+      while (queue.length) {
+        const job = queue.shift();
+        if (job.epoch !== epoch || !pages.includes(job.page)) { job.source = null; continue; }   // se vació todo mientras esperaba
+        try {
+          const source = job.file ? await fileToCanvas(job.file) : job.source;
+          job.source = null;
+          const r = await buildPage(source, job.mode, job.autoCrop);
+          if (job.epoch !== epoch || !pages.includes(job.page)) continue;
+          const p = job.page;
+          p.blob = r.blob; p.w = r.w; p.h = r.h; p.cropped = r.cropped;
+          p.url = URL.createObjectURL(r.blob); p.thumbUrl = URL.createObjectURL(r.thumb);
+          p.status = "ok";
+        } catch (e) {
+          console.error("No se pudo procesar la foto:", e);
+          if (pages.includes(job.page)) job.page.status = "error";
         }
-        if (r.p >= 0.15) {
-          ctx.fillStyle = r.nonEmpty ? "#b45f00" : "#667";
-          ctx.fillText(Math.round(r.p * 100) + "%", X1 + 3, yb - (yb - ya) * 0.25);
-        }
+        if (job.epoch === epoch) syncCards();
+        updateBusyUI();
+        await sleep(0);
       }
+    } finally {
+      working = false;
+      updateBusyUI();
     }
-  }
-
-  // Redibuja solo los recuadros de la tarjeta de esa página (sin rearmar la lista)
-  function refreshOverlay(page) {
-    for (const cv of document.querySelectorAll('canvas.ov[data-id="' + page.id + '"]')) drawPageOverlay(cv, page);
-    const m = document.querySelector('.thumb[data-id="' + page.id + '"] .meta');
-    if (m) m.textContent = stageText(page);
-  }
-
-  const STAGE_NAMES = ["", "Paso 1/4 · hoja completa", "Paso 2/4 · recuadro de cantidades", "Paso 3/4 · filas numeradas", ""];
-  function stageText(page) {
-    if ((page.stage || 0) < 4) return STAGE_NAMES[page.stage || 0] || "";
-    const idx = (page.rowMeta || []).filter((r) => r.nonEmpty).map((r) => r.index);
-    const dud = (page.rowMeta || []).filter((r) => r.nonEmpty && !r.sure).map((r) => r.index);
-    return idx.length ? "Filas con número: " + idx.join(", ") + " → " + idx.length + (idx.length === 1 ? " lectura" : " lecturas") + (dud.length ? " · dudosas: " + dud.join(", ") : "")
-                      : "Ninguna fila con número (no se envió nada)";
-  }
-
-  // Un canvas del tamaño (proporción) de la página, para dibujar encima de la imagen
-  function makeOverlayCanvas(page) {
-    const cv = document.createElement("canvas");
-    cv.className = "ov"; cv.dataset.id = page.id;
-    cv.width = 420; cv.height = Math.max(2, Math.round(420 * page.h / page.w));
-    drawPageOverlay(cv, page);
-    return cv;
   }
 
   // ---------- Captura con la cámara ----------
-  let stillOk = null;   // null = sin probar, true/false = se puede / no se puede sacar foto de máxima resolución
-
   async function takeStill() {
     const track = stream && stream.getVideoTracks()[0];
     if (!track || typeof ImageCapture === "undefined" || stillOk === false) return null;
@@ -669,88 +413,42 @@
     return c;
   }
 
-  function setBusy(b) {
-    capturing = b;
-    captureBtn.disabled = b;
-    uploadBtn.disabled = b;
-  }
-
   async function capture() {
     if (!stream || !video.videoWidth) { setStatus("La cámara todavía no está lista."); return; }
-    if (capturing) return;
-    setBusy(true);
+    if (grabbing) return;
+    if (pending() >= MAX_PENDING) { setStatus("Un momento: se están procesando las fotos anteriores."); return; }
+    grabbing = true; updateBusyUI();
     flash.classList.add("on");
     setTimeout(() => flash.classList.remove("on"), 60);
     const e0 = epoch;
     try {
-      setStatus("Procesando foto…", 0);
       const frame = await grabFrame();
-      const r = await addPageFromCanvas(frame, false, e0);
-      setStatus("Foto " + pages.length + " guardada ✔ (" + r.w + "×" + r.h + ")" + r.note, 7000);
+      if (e0 === epoch) { enqueue({ source: frame }); setStatus("Foto " + pages.length + " tomada ✔", 2500); }
     } catch (err) {
       console.error(err);
       setStatus("No se pudo sacar la foto: " + err.message, 6000);
     } finally {
-      setBusy(false);
+      grabbing = false; updateBusyUI();
     }
   }
   captureBtn.addEventListener("click", capture);
 
   // ---------- Subir fotos (botón o arrastrar y soltar) ----------
-  // Abre una imagen respetando la orientación EXIF (las fotos de celular vienen "acostadas"
-  // y llevan anotado cuánto girarlas). Si el navegador no lo soporta, usa <img>, que lo aplica solo.
-  async function fileToCanvas(f) {
-    const c = document.createElement("canvas");
-    try {
-      const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
-      c.width = bmp.width; c.height = bmp.height;
-      c.getContext("2d").drawImage(bmp, 0, 0);
-      if (bmp.close) bmp.close();
-      return c;
-    } catch (e) { /* se prueba con <img> */ }
-    const url = URL.createObjectURL(f);
-    try {
-      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("imagen inválida")); i.src = url; });
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext("2d").drawImage(img, 0, 0);
-      return c;
-    } finally { URL.revokeObjectURL(url); }
-  }
-
-  async function importFiles(fileList) {
+  function importFiles(fileList) {
     const files = [...fileList];
     if (!files.length) return;
-    if (capturing) { setStatus("Esperá a que termine la foto en curso."); return; }
-    setBusy(true);
-    const failed = [];
-    let ok = 0;
-    const myEpoch = epoch;
-    try {
-      for (let i = 0; i < files.length; i++) {
-        if (myEpoch !== epoch) break;        // se apretó "Vaciar todo": se cancela lo que faltaba subir
-        const f = files[i];
-        setStatus("Procesando " + (i + 1) + " de " + files.length + "…", 0);
-        if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) { failed.push(f.name); continue; }
-        try {
-          const c = await fileToCanvas(f);
-          await addPageFromCanvas(c, true, myEpoch);
-          ok++;
-        } catch (e) {
-          console.error("No se pudo abrir", f.name, e);
-          failed.push(f.name);
-        }
-        await new Promise((r) => setTimeout(r, 0));   // deja respirar a la pantalla
-      }
-    } finally {
-      setBusy(false);
+    const bad = [], good = [];
+    for (const f of files) {
+      if (f.type === "application/pdf" || /\.pdf$/i.test(f.name) || !(/^image\//.test(f.type) || /\.(jpe?g|png|webp|bmp|gif)$/i.test(f.name))) bad.push(f.name);
+      else good.push(f);
     }
-    setStatus(ok ? ok + " foto(s) cargada(s) ✔" : "", 6000);
-    if (failed.length) {
-      showMessage("No se pudieron abrir estos archivos:\n• " + failed.join("\n• ") +
+    good.forEach((f) => enqueue({ file: f }));
+    if (good.length) setStatus(good.length + (good.length === 1 ? " foto agregada" : " fotos agregadas") + " · procesando…", 5000);
+    if (bad.length) {
+      showMessage("No se pudieron abrir estos archivos:\n• " + bad.join("\n• ") +
         "\n\nSolo se aceptan imágenes (JPG, PNG, WEBP). Si la foto es HEIC, convertila a JPG; si es un PDF, exportá sus páginas como imágenes.");
     }
   }
-
   uploadBtn.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => { importFiles(fileInput.files); fileInput.value = ""; });
 
@@ -759,398 +457,384 @@
   let dragTimer = null;
   function resetDragState() { clearTimeout(dragTimer); dragTimer = null; pagesPanel.classList.remove("dragover"); }
   function markDrag() { pagesPanel.classList.add("dragover"); clearTimeout(dragTimer); dragTimer = setTimeout(resetDragState, 250); }
-  pagesPanel.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); markDrag(); });
-  pagesPanel.addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; markDrag(); });
-  pagesPanel.addEventListener("dragleave", () => { resetDragState(); });
-  pagesPanel.addEventListener("drop", (e) => {
+  window.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); markDrag(); });
+  window.addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; markDrag(); });
+  window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) resetDragState(); });
+  window.addEventListener("dragend", resetDragState);
+  window.addEventListener("drop", (e) => {
     if (!hasFiles(e)) return;
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
     resetDragState();
     importFiles(e.dataTransfer.files);
   });
-  window.addEventListener("dragend", resetDragState);
-  // Si sueltan una foto en cualquier otro lugar de la ventana, también se carga (y el navegador no la abre).
-  window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
-  window.addEventListener("drop", (e) => { if (hasFiles(e)) { e.preventDefault(); if (!anyDialogOpen()) importFiles(e.dataTransfer.files); } });
-  document.addEventListener("keydown", (e) => {
-    const tag = document.activeElement && document.activeElement.tagName;
-    if (e.code === "Space" && !anyDialogOpen() && tag !== "SELECT" && tag !== "INPUT" && tag !== "TEXTAREA") {
-      e.preventDefault();
-      capture();
-    }
+
+  window.addEventListener("keydown", (e) => {
+    const tag = (e.target && e.target.tagName) || "";
+    if (e.code === "Space" && !anyDialogOpen() && !["SELECT", "INPUT", "TEXTAREA", "BUTTON"].includes(tag)) { e.preventDefault(); capture(); }
   });
 
-  // ---------- Lectura de texto ----------
-  let ocrActive = 0;
-  const ocrWaiting = [];
-  const ocrAcquire = () => new Promise((res) => { if (ocrActive < 3) { ocrActive++; res(); } else ocrWaiting.push(res); });
-  const ocrRelease = () => { const next = ocrWaiting.shift(); if (next) next(); else ocrActive--; };
-  const catalogList = () => String(settings.catalog || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  // ---------- Lista de remitos ----------
+  const cards = new Map();
+  const ICON = (n) => '<svg class="i"><use href="#i-' + n + '"/></svg>';
 
-  async function runOcr(page) {
-    const myRun = ++page.runId, myEpoch = epoch;
-    page.rows = [];
-    const todo = (page.rowMeta || []).filter((r) => r.nonEmpty && page.rowCrops[r.index]);
-    if (!todo.length || !settings.apiKey) { page.status = "alert"; render(); return; }
-    page.status = "reading";
-    render();
-    await ocrAcquire();
-    const stale = () => page.runId !== myRun || myEpoch !== epoch || !pages.includes(page) || page.status === "manual";
-    try {
-      if (stale()) return;
-      // A Cloud Vision se le mandan SOLO las filas con número (cada una es una lectura facturable).
-      const resps = await OCR.recognizeBatch(todo.map((r) => page.rowCrops[r.index].blob), settings.apiKey);
-      addUsage(todo.length);
-      if (stale()) return;
-      const cells = todo.map((r, k) => {
-        const resp = resps[k];
-        if (!resp || resp.error) return { index: r.index, words: [], failed: true };
-        const { words } = OCR.extractWords(resp, { autoRotate: false });
-        return { index: r.index, words, uncertain: !r.sure };
-      });
-      page.rows = OCR.buildRowsFromCells(cells, {
-        products: catalogList(), minConf: OCR.minConfFor(settings.sensitivity),
-        layoutOk: page.layoutOk
-      });
-      page.status = page.rows.length && !page.rows.some((r) => r.low) ? "ok" : "alert";
-    } catch (err) {
-      console.error("Lectura de texto falló:", err);
-      if (stale()) return;
-      page.rows = [];
-      page.status = "alert";
-      setStatus("No se pudo leer: " + err.message, 8000);
-    } finally {
-      ocrRelease();
-    }
-    render();
+  function cardFor(page) {
+    let c = cards.get(page.id);
+    if (c) return c;
+    c = document.createElement("div");
+    c.className = "thumb";
+    c.innerHTML =
+      '<div class="imgbox"><img alt=""><span class="num"></span><div class="state"></div></div>' +
+      '<div class="tools"><button type="button" class="rot" title="Girar 90°">' + ICON("rotate") + 'Girar</button>' +
+      '<button type="button" class="del" title="Eliminar">' + ICON("trash") + 'Quitar</button></div>';
+    c.querySelector(".imgbox").addEventListener("click", () => { if (page.status === "ok" && page.url) openPreview(page); });
+    c.querySelector(".del").addEventListener("click", () => removePage(page));
+    c.querySelector(".rot").addEventListener("click", () => rotatePage(page));
+    cards.set(page.id, c);
+    return c;
   }
 
-  // ---------- Lista de páginas ----------
-  function render() {
-    const scroll = thumbs.scrollTop;
-    thumbs.innerHTML = "";
+  function fillCard(c, page, i) {
+    c.classList.toggle("processing", page.status !== "ok");
+    c.querySelector(".num").textContent = i + 1;
+    const img = c.querySelector("img");
+    const src = page.thumbUrl || "";
+    if (img.getAttribute("src") !== src) { if (src) img.src = src; else img.removeAttribute("src"); }
+    img.hidden = !src;
+    const st = c.querySelector(".state");
+    if (page.status === "processing" || page.busy) { st.hidden = false; st.innerHTML = '<div class="spinner"></div><span>' + (page.busy ? "Girando…" : "Procesando…") + "</span>"; }
+    else if (page.status === "error") { st.hidden = false; st.innerHTML = "<span>No se pudo procesar.<br>Quitala y probá de nuevo.</span>"; }
+    else st.hidden = true;
+    c.querySelector(".rot").disabled = page.status !== "ok" || !!page.busy;
+  }
+
+  function syncCards() {
+    const ids = new Set(pages.map((p) => p.id));
+    for (const [id, c] of cards) if (!ids.has(id)) { c.remove(); cards.delete(id); }
     pages.forEach((p, i) => {
-      const card = document.createElement("div");
-      card.className = "thumb";
-      card.innerHTML =
-        '<span class="num">' + (i + 1) + "</span>" +
-        (p.status === "reading" ? '<span class="badge reading">⏳</span>' : "") +
-        (p.status === "alert" ? '<button class="badge alert">⚠</button>' : "") +
-        '<div class="imgwrap"><img alt="Página ' + (i + 1) + '"></div>' +
-        '<div class="meta"></div>' +
-        '<div class="tools"><button class="btn small edit">✏ Datos</button>' +
-        '<button class="btn small rot">⟳ Girar</button>' +
-        '<button class="btn small danger del">🗑</button></div>';
-      card.dataset.id = p.id;
-      card.querySelector("img").src = p.url;
-      card.querySelector(".imgwrap").appendChild(makeOverlayCanvas(p));
-      card.querySelector(".meta").textContent = stageText(p);
-      card.querySelector(".imgwrap").addEventListener("click", () => openEditor(p));
-      card.querySelector(".edit").addEventListener("click", () => openEditor(p));
-      const alertBtn = card.querySelector(".badge.alert");
-      if (alertBtn) alertBtn.addEventListener("click", () => openEditor(p));
-      card.querySelector(".del").addEventListener("click", () => {
-        URL.revokeObjectURL(p.url);
-        freeAnalysis(p);
-        pages.splice(pages.indexOf(p), 1);
-        render();
-      });
-      card.querySelector(".rot").addEventListener("click", () => rotatePage(p));
-      thumbs.appendChild(card);
+      const c = cardFor(p);
+      if (thumbs.children[i] !== c) thumbs.insertBefore(c, thumbs.children[i] || null);
+      fillCard(c, p, i);
     });
-    thumbs.scrollTop = scroll;
     countEl.textContent = pages.length;
-    emptyEl.style.display = pages.length ? "none" : "block";
+    emptyEl.hidden = pages.length > 0;
+    thumbs.hidden = pages.length === 0;
     saveBtn.disabled = pages.length === 0;
-    renderTotals();
+    clearBtn.disabled = pages.length === 0 && !totalsFilledCount();
+    updateTotalsInfo();
   }
 
-  function currentTotals() { return OCR.aggregate(pages.map((p) => p.rows)); }
-
-  function renderTotals() {
-    const totals = currentTotals();
-    totalsTable.innerHTML = "";
-    for (const t of totals) {
-      const tr = document.createElement("tr");
-      const a = document.createElement("td"), b = document.createElement("td");
-      a.textContent = t.name;
-      b.textContent = OCR.formatQty(t.qty);
-      tr.append(a, b);
-      totalsTable.appendChild(tr);
-    }
-    totalsEmpty.style.display = totals.length ? "none" : "block";
+  function releasePage(p) {
+    if (p.url) URL.revokeObjectURL(p.url);
+    if (p.thumbUrl) URL.revokeObjectURL(p.thumbUrl);
+    p.url = p.thumbUrl = ""; p.blob = null;
   }
 
-  // Gira una imagen "deg" grados en sentido horario (90, 180 o 270).
-  async function rotateBlob(blob, deg) {
-    deg = deg || 90;
-    const bmp = await createImageBitmap(blob);
-    const c = document.createElement("canvas");
-    const swap = deg === 90 || deg === 270;
-    c.width = swap ? bmp.height : bmp.width; c.height = swap ? bmp.width : bmp.height;
-    const ctx = c.getContext("2d");
-    ctx.translate(c.width / 2, c.height / 2);
-    ctx.rotate(deg * Math.PI / 180);
-    ctx.drawImage(bmp, -bmp.width / 2, -bmp.height / 2);
-    if (bmp.close) bmp.close();
-    return toBlob(c, 0.92);
-  }
-
-  // "rotation" es lo que informa la lectura: 90 = hay que girar 90° a la izquierda (= 270° horario).
-  async function rotatePageBy(p, rotation) {
-    const cw = rotation === 90 ? 270 : rotation === 270 ? 90 : 180;
-    p.blob = await rotateBlob(p.blob, cw);
-    p.ocrBlob = await rotateBlob(p.ocrBlob, cw);
-    if (cw !== 180) [p.w, p.h] = [p.h, p.w];
-    URL.revokeObjectURL(p.url);
-    p.url = URL.createObjectURL(p.blob);
+  function removePage(p) {
+    const i = pages.indexOf(p);
+    if (i < 0) return;
+    pages.splice(i, 1);
+    releasePage(p);
+    syncCards();
   }
 
   async function rotatePage(p) {
-    await rotatePageBy(p, 270);   // 270 = girar 90° a la derecha
-    // Con la hoja girada se vuelve a ubicar la tabla y las filas (sobre la imagen de la página) y se vuelve a leer.
+    if (p.status !== "ok" || p.busy) return;
+    p.busy = true; syncCards();
+    const myEpoch = epoch;
     try {
-      const bmp = await createImageBitmap(p.ocrBlob);
-      const c = document.createElement("canvas");
-      c.width = bmp.width; c.height = bmp.height;
-      c.getContext("2d").drawImage(bmp, 0, 0);
-      if (bmp.close) bmp.close();
-      const table = Layout.findTable(imageDataOf(c));
-      const an = await analyzeStrip(makeStripCanvas(table, c, null));
-      freeAnalysis(p);
-      Object.assign(p, { table: { x0: table.x0, x1: table.x1, y0: table.y0, y1: table.y1 }, layoutOk: table.ok,
-        rowFracs: an.rowFracs, rowMeta: an.rowMeta, rowCrops: an.rowCrops, stage: 4 });
-    } catch (e) { console.error("No se pudo analizar la columna de cantidades:", e); }
-    if (p.status === "manual") render();
-    else runOcr(p);
+      const r = await rotateBlob(p.blob, 90);
+      const thumb = await toBlob(fitCanvas(r.canvas, 440), 0.8);
+      if (myEpoch !== epoch || !pages.includes(p)) return;
+      URL.revokeObjectURL(p.url); URL.revokeObjectURL(p.thumbUrl);
+      p.blob = r.blob; [p.w, p.h] = [r.canvas.width, r.canvas.height];
+      p.url = URL.createObjectURL(r.blob); p.thumbUrl = URL.createObjectURL(thumb);
+    } catch (e) { console.error(e); setStatus("No se pudo girar la foto.", 4000); }
+    p.busy = false;
+    if (myEpoch === epoch) syncCards();
   }
+
+  function openPreview(p) {
+    previewImg.src = p.url;
+    previewDialog.showModal();
+  }
+  $("previewClose").addEventListener("click", () => previewDialog.close());
+  previewDialog.addEventListener("click", (e) => { if (e.target === previewDialog) previewDialog.close(); });
 
   function clearAll() {
     epoch++;                                   // lo que estaba procesándose se descarta
-    pages.forEach((p) => { URL.revokeObjectURL(p.url); freeAnalysis(p); });
+    queue.length = 0;
+    pages.forEach(releasePage);
     pages = [];
-    setBusy(false);
+    totalsState = { values: {}, extras: [] };
+    persistTotals();
+    grabbing = false;
     resetDragState();
-    live.stable = 0; live.an = null; live.ticks = 0;
-    render();
+    stable = 0;
+    syncCards();
+    updateBusyUI();
     ensureCamera();
-    setStatus("Fotos borradas. Podés seguir escaneando.", 4000);
+    setStatus("Todo borrado. Podés seguir escaneando.", 4000);
   }
 
   clearBtn.addEventListener("click", async () => {
-    if (!pages.length) return;
-    if (await askConfirm("¿Borrar todas las fotos tomadas?", "Sí, vaciar todo", "Cancelar")) clearAll();
+    if (await askConfirm("¿Borrar todas las fotos y las cantidades cargadas?", "Sí, vaciar todo", "Cancelar")) clearAll();
   });
 
-  // ---------- Edición manual de datos ----------
-  let editing = null;
-  let editRows = [];
-
-  function openEditor(page) {
-    editing = page;
-    editRows = page.rows.map((r) => ({
-      name: r.name || "",
-      qtyText: r.qty !== null && r.qty !== undefined ? OCR.formatQty(r.qty) : "",
-      low: !!r.low, index: r.index || 0, crop: r.index && page.rowCrops[r.index] ? page.rowCrops[r.index].url : "",
-      meta: (page.rowMeta || []).find((m) => m.index === r.index) || null
-    }));
-    if (!editRows.length) editRows.push({ name: "", qtyText: "", low: false });
-    editNum.textContent = String(pages.indexOf(page) + 1);
-    editImg.src = page.url;
-    editWrap.querySelectorAll("canvas.ov").forEach((c) => c.remove());
-    const ov = makeOverlayCanvas({ ...page, stage: 4 });
-    editWrap.appendChild(ov);
-    editErr.textContent = "";
-    renderEditRows();
-    editDialog.showModal();
+  // ---------- Tabla de recepciones (cantidades totales) ----------
+  let totalsState = loadTotals();
+  let totalsMode = "edit";
+  function loadTotals() {
+    try { const t = JSON.parse(localStorage.getItem("totals") || "{}"); return { values: t.values || {}, extras: Array.isArray(t.extras) ? t.extras : [] }; }
+    catch (e) { return { values: {}, extras: [] }; }
   }
+  function persistTotals() { try { localStorage.setItem("totals", JSON.stringify(totalsState)); } catch (e) { /* nada */ } }
 
-  function renderEditRows() {
-    editRowsEl.innerHTML = "";
-    editRows.forEach((row, i) => {
-      const div = document.createElement("div");
-      div.className = "erow" + (row.low ? " low" : "");
-      const warn = document.createElement("span");
-      warn.className = "warn";
-      warn.textContent = row.low ? "⚠" : "";
-      const nameIn = document.createElement("input");
-      nameIn.type = "text"; nameIn.value = row.name; nameIn.placeholder = "Producto";
-      const qtyIn = document.createElement("input");
-      qtyIn.type = "text"; qtyIn.value = row.qtyText; qtyIn.placeholder = "0"; qtyIn.inputMode = "decimal";
-      const del = document.createElement("button");
-      del.type = "button"; del.textContent = "✕";
-      const touched = () => { row.low = false; div.classList.remove("low"); warn.textContent = ""; };
-      nameIn.addEventListener("input", () => { row.name = nameIn.value; nameIn.classList.remove("bad"); touched(); });
-      qtyIn.addEventListener("input", () => { row.qtyText = qtyIn.value; qtyIn.classList.remove("bad"); touched(); });
-      del.addEventListener("click", () => { editRows.splice(i, 1); renderEditRows(); });
-      if (row.crop) {
-        const lab = document.createElement("div");
-        lab.className = "rowcrop";
-        const im = document.createElement("img"); im.src = row.crop; im.alt = "Fila " + row.index;
-        const sp = document.createElement("span"); sp.textContent = "Fila " + row.index + (row.meta ? " · " + Math.round(row.meta.p * 100) + "% de probabilidad de número" : "") +
-          (row.meta && row.meta.ambiguous ? " · ¿o es de la fila " + row.meta.alt + "?" : "") + " — lo que se envió a Google";
-        lab.append(sp, im);
-        div.appendChild(lab);
-      }
-      div.append(warn, nameIn, qtyIn, del);
-      editRowsEl.appendChild(div);
-    });
-  }
-
-  $("addRowBtn").addEventListener("click", () => {
-    editRows.push({ name: "", qtyText: "", low: false });
-    renderEditRows();
-    const inputs = editRowsEl.querySelectorAll("input");
-    if (inputs.length >= 2) inputs[inputs.length - 2].focus();
-    editRowsEl.scrollTop = editRowsEl.scrollHeight;
-  });
-
-  $("cancelEdit").addEventListener("click", () => editDialog.close());
-
-  $("saveEdit").addEventListener("click", () => {
-    const out = [];
-    let bad = false;
-    const inputs = editRowsEl.querySelectorAll(".erow");
-    editRows.forEach((row, i) => {
-      const name = row.name.trim(), qtyText = row.qtyText.trim();
-      if (!name && !qtyText) return;                       // fila vacía: se descarta
-      const qty = OCR.parseManualQty(qtyText);
-      const nameOk = !!name, qtyOk = qty !== null;
-      if (!nameOk) inputs[i].children[1].classList.add("bad");
-      if (!qtyOk) inputs[i].children[2].classList.add("bad");
-      if (!nameOk || !qtyOk) { bad = true; return; }
-      out.push({ name, qty, qtyText, conf: 1, lineText: name, low: false, index: row.index || undefined });
-    });
-    if (bad) { editErr.textContent = "Completá producto y una cantidad válida (por ejemplo 12 o 2,5) en las filas marcadas."; return; }
-    editing.rows = out;
-    editing.status = "manual";
-    editing.runId++;          // descarta cualquier lectura que siga en curso
-    editDialog.close();
-    render();
-  });
-
-  // ---------- Ajustes ----------
-  settingsBtn.addEventListener("click", () => {
-    keyInput.value = settings.apiKey;
-    sensSelect.value = settings.sensitivity;
-    updateUsageLabels();
-    catalogInput.value = settings.catalog;
-    hiResChk.checked = !!settings.hiRes;
-    keyMsg.textContent = "";
-    settingsDialog.showModal();
-  });
-  $("cancelSettings").addEventListener("click", () => settingsDialog.close());
-  $("saveSettings").addEventListener("click", () => {
-    settings.apiKey = keyInput.value.trim();
-    settings.sensitivity = sensSelect.value;
-    settings.catalog = catalogInput.value;
-    settings.hiRes = hiResChk.checked;
-    persistSettings();
-    settingsDialog.close();
-    updateKeyHint();
-  });
-  $("resetCatalog").addEventListener("click", () => { catalogInput.value = OCR.DEFAULT_CATALOG.join("\n"); });
-  filterSelect.addEventListener("change", () => { settings.filterMode = filterSelect.value; persistSettings(); });
-  autoCropChk.addEventListener("change", () => { settings.autoCrop = autoCropChk.checked; persistSettings(); });
-
-  $("testKeyBtn").addEventListener("click", async () => {
-    const key = keyInput.value.trim();
-    if (!key) { keyMsg.textContent = "Pegá primero la clave."; return; }
-    keyMsg.textContent = "Probando…";
-    try {
-      const c = document.createElement("canvas");
-      c.width = 320; c.height = 120;
-      const ctx = c.getContext("2d");
-      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 320, 120);
-      ctx.fillStyle = "#000"; ctx.font = "40px sans-serif"; ctx.fillText("Prueba 123", 20, 70);
-      await OCR.recognize(await toBlob(c, 0.9), key);
-      addUsage(1);
-      keyMsg.textContent = "✔ La clave funciona.";
-    } catch (err) {
-      keyMsg.textContent = "✖ " + err.message + " — revisá que la clave esté bien copiada, que la API Cloud Vision esté habilitada y la facturación activa.";
+  // Un número: acepta 12 · 12,5 · 12.5 · 1.250 (mil doscientos cincuenta) · 1.250,5
+  function parseNumber(s) {
+    s = String(s).replace(/\s+/g, "");
+    if (!s) return null;
+    if (!/^[0-9.,]+$/.test(s)) return NaN;
+    const hasC = s.includes(","), hasD = s.includes(".");
+    if (hasC && hasD) {
+      if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
+      else s = s.replace(/,/g, "");
+    } else if (hasC) {
+      s = (s.match(/,/g) || []).length > 1 ? s.replace(/,/g, "") : s.replace(",", ".");
+    } else if (hasD) {
+      const parts = s.split(".");
+      if (parts.length > 2 || (parts[1].length === 3 && parts[0] !== "" && parts[0] !== "0")) s = parts.join("");
     }
-  });
+    const v = Number(s);
+    return isFinite(v) && v >= 0 ? v : NaN;
+  }
+  // Una cantidad o una suma de cantidades ("120+35,5")
+  function parseQty(text) {
+    const t = String(text || "").trim();
+    if (!t) return { empty: true };
+    let sum = 0;
+    const parts = t.split("+");
+    for (const p of parts) {
+      const v = parseNumber(p);
+      if (v === null || Number.isNaN(v)) return { ok: false };
+      sum += v;
+    }
+    return { ok: true, value: Math.round(sum * 1000) / 1000, isSum: parts.length > 1 };
+  }
+  const formatQty = (v) => String(Math.round(v * 1000) / 1000).replace(".", ",");
 
-  function updateKeyHint() {
-    if (!settings.apiKey) setStatus("Falta la clave de lectura de texto: tocá ⚙ Ajustes para cargarla.", 0);
-    else if (statusEl.textContent.startsWith("Falta la clave")) setStatus("");
+  function totalsFilledCount() {
+    let n = 0;
+    for (const name of catalogList()) if (String(totalsState.values[name] || "").trim()) n++;
+    for (const x of totalsState.extras) if (String(x.text || "").trim() && String(x.name || "").trim()) n++;
+    return n;
+  }
+  function updateTotalsInfo() {
+    const n = totalsFilledCount();
+    totalsInfo.textContent = n ? n + (n === 1 ? " producto con cantidad" : " productos con cantidad") : "Sin cantidades cargadas";
+    totalsInfo.classList.toggle("filled", n > 0);
   }
 
-  // ---------- Guardar PDF ----------
   function defaultName() {
     const d = new Date(), p = (n) => String(n).padStart(2, "0");
     return "Remitos " + d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + "." + p(d.getMinutes());
   }
 
-  saveBtn.addEventListener("click", async () => {
-    if (pages.some((p) => p.status === "reading")) {
-      await showMessage("Todavía se están leyendo algunas páginas (⏳). Esperá unos segundos y probá de nuevo.");
-      return;
-    }
-    const unverified = pages.filter((p) => p.status === "alert").length;
-    if (unverified && !(await askConfirm(
-      "Hay " + unverified + " página(s) con el símbolo ⚠ (datos sin verificar).\n\n" +
-      "Sus cantidades se suman tal como se leyeron, o no se suman si no se leyó nada.\n\n" +
-      "¿Guardar el PDF igual? (Con “Revisar” podés corregirlas con ✏ Datos.)", "Guardar igual", "Revisar"))) return;
-    nameInput.value = defaultName();
-    nameDialog.showModal();
-    nameInput.focus();
-    nameInput.select();
-  });
-  cancelName.addEventListener("click", () => nameDialog.close());
+  function calcLabel(row, input) {
+    const q = parseQty(input.value);
+    let lab = row.querySelector(".calc");
+    if (q.ok && q.isSum) {
+      if (!lab) { lab = document.createElement("div"); lab.className = "calc"; row.appendChild(lab); }
+      lab.textContent = "= " + formatQty(q.value);
+    } else if (lab) lab.remove();
+  }
 
-  nameForm.addEventListener("submit", async (e) => {
+  function buildTotalsRows() {
+    totalsRows.innerHTML = "";
+    const mkQty = (get, set, placeholder) => {
+      const inp = document.createElement("input");
+      inp.type = "text"; inp.className = "q"; inp.inputMode = "decimal"; inp.autocomplete = "off"; inp.placeholder = placeholder || "—";
+      inp.value = get();
+      inp.addEventListener("input", () => { set(inp.value); inp.classList.remove("bad"); totalsErr.textContent = ""; calcLabel(inp.parentElement, inp); updateTotalsInfo(); });
+      inp.addEventListener("blur", () => { const q = parseQty(inp.value); inp.classList.toggle("bad", q.ok === false); });
+      return inp;
+    };
+    catalogList().forEach((name, i) => {
+      const row = document.createElement("div");
+      row.className = "tt-row";
+      const n = document.createElement("div"); n.className = "n"; n.textContent = i + 1;
+      const nm = document.createElement("div"); nm.className = "name"; nm.textContent = name;
+      const inp = mkQty(() => totalsState.values[name] || "", (v) => { totalsState.values[name] = v; persistTotals(); });
+      row.append(n, nm, inp);
+      calcLabel(row, inp);
+      totalsRows.appendChild(row);
+    });
+    totalsState.extras.forEach((x, i) => {
+      const row = document.createElement("div");
+      row.className = "tt-row extra";
+      const rm = document.createElement("button"); rm.type = "button"; rm.className = "rm"; rm.title = "Quitar"; rm.innerHTML = ICON("x");
+      rm.addEventListener("click", () => { totalsState.extras.splice(i, 1); persistTotals(); buildTotalsRows(); updateTotalsInfo(); });
+      const nm = document.createElement("input"); nm.type = "text"; nm.className = "name-in"; nm.placeholder = "Nombre del producto"; nm.value = x.name || "";
+      nm.addEventListener("input", () => { x.name = nm.value; persistTotals(); updateTotalsInfo(); });
+      const inp = mkQty(() => x.text || "", (v) => { x.text = v; persistTotals(); });
+      row.append(rm, nm, inp);
+      calcLabel(row, inp);
+      totalsRows.appendChild(row);
+    });
+  }
+
+  function openTotals(mode) {
+    totalsMode = mode;
+    const save = mode === "save";
+    nameField.hidden = !save;
+    totalsOk.textContent = save ? "Guardar PDF" : "Aceptar";
+    totalsHint.textContent = save
+      ? "Cargá la cantidad total recibida de cada producto antes de guardar. Los que dejes vacíos no aparecen en el PDF."
+      : "Cargá la cantidad total recibida de cada producto. Quedan guardadas hasta que vacíes todo.";
+    if (save) nameInput.value = defaultName();
+    totalsErr.textContent = "";
+    buildTotalsRows();
+    totalsDialog.showModal();
+    totalsRows.scrollTop = 0;
+    const first = totalsRows.querySelector("input.q");
+    if (save) { nameInput.focus(); nameInput.select(); } else if (first) first.focus();
+  }
+
+  // Enter pasa al siguiente casillero (en vez de cerrar el cuadro)
+  totalsDialog.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.target.tagName !== "INPUT") return;
     e.preventDefault();
+    const inputs = [...totalsDialog.querySelectorAll("input")].filter((x) => !x.closest("[hidden]"));
+    const k = inputs.indexOf(e.target);
+    if (k >= 0 && k < inputs.length - 1) { inputs[k + 1].focus(); inputs[k + 1].select && inputs[k + 1].select(); }
+    else totalsOk.focus();
+  });
+
+  $("addExtraBtn").addEventListener("click", () => {
+    totalsState.extras.push({ name: "", text: "" });
+    persistTotals(); buildTotalsRows();
+    const names = totalsRows.querySelectorAll("input.name-in");
+    if (names.length) { names[names.length - 1].focus(); totalsRows.scrollTop = totalsRows.scrollHeight; }
+  });
+  $("clearTotalsBtn").addEventListener("click", () => {
+    totalsState = { values: {}, extras: [] };
+    persistTotals(); buildTotalsRows(); updateTotalsInfo();
+  });
+  $("totalsCancel").addEventListener("click", () => totalsDialog.close());
+  totalsBtn.addEventListener("click", () => openTotals("edit"));
+
+  // Filas listas para el PDF; devuelve null si hay datos inválidos
+  function collectTotals() {
+    const rows = [];
+    let bad = 0, noName = 0;
+    const inputs = [...totalsRows.querySelectorAll(".tt-row")];
+    const mark = (idx, isBad) => { const q = inputs[idx] && inputs[idx].querySelector("input.q"); if (q) q.classList.toggle("bad", isBad); };
+    const names = catalogList();
+    names.forEach((name, i) => {
+      const q = parseQty(totalsState.values[name]);
+      if (q.empty) { mark(i, false); return; }
+      if (!q.ok) { bad++; mark(i, true); return; }
+      rows.push({ name, qtyText: formatQty(q.value) });
+    });
+    totalsState.extras.forEach((x, k) => {
+      const q = parseQty(x.text), nm = String(x.name || "").trim();
+      const idx = names.length + k;
+      if (q.empty && !nm) return;
+      if (!q.empty && !q.ok) { bad++; mark(idx, true); return; }
+      if (q.empty) { bad++; mark(idx, true); return; }
+      if (!nm) { noName++; return; }
+      mark(idx, false);
+      rows.push({ name: nm, qtyText: formatQty(q.value) });
+    });
+    if (bad || noName) {
+      totalsErr.textContent = bad ? "Revisá las cantidades marcadas en rojo (por ejemplo 12 o 2,5)." : "Falta el nombre de un producto agregado.";
+      return null;
+    }
+    return rows;
+  }
+
+  totalsForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const rows = collectTotals();
+    if (rows === null) return;
+    if (totalsMode === "edit") { totalsDialog.close(); updateTotalsInfo(); return; }
     let name = nameInput.value.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\.pdf$/i, "");
     if (!name) name = defaultName();
-    nameDialog.close();
+    if (!rows.length) {
+      totalsDialog.close();
+      if (!(await askConfirm("No cargaste ninguna cantidad, así que el PDF saldrá sin la tabla de recepciones.\n\n¿Guardarlo igual?", "Guardar igual", "Volver"))) { openTotals("save"); nameInput.value = name; return; }
+    } else totalsDialog.close();
+    await savePdf(name, rows);
+  });
+
+  // ---------- Guardar PDF ----------
+  const b64ToBytes = (b64) => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+
+  saveBtn.addEventListener("click", async () => {
+    if (pages.some((p) => p.status === "processing")) { await showMessage("Todavía se están procesando algunas fotos. Esperá unos segundos y probá de nuevo."); return; }
+    const errors = pages.filter((p) => p.status === "error").length;
+    if (errors && !(await askConfirm(errors + " foto(s) no se pudieron procesar y no van a estar en el PDF.\n\n¿Seguir igual?", "Seguir", "Cancelar"))) return;
+    if (!pages.some((p) => p.status === "ok")) { await showMessage("No hay fotos listas para guardar."); return; }
+    openTotals("save");
+  });
+
+  async function savePdf(name, rows) {
     setStatus("Generando PDF…", 0);
     try {
+      const ok = pages.filter((p) => p.status === "ok" && p.blob);
       const data = [];
-      for (const p of pages) data.push({ bytes: new Uint8Array(await p.blob.arrayBuffer()), w: p.w, h: p.h });
-
-      const totals = currentTotals();
-      const unverified = pages.filter((p) => p.status === "alert").length;
+      for (const p of ok) data.push({ bytes: new Uint8Array(await p.blob.arrayBuffer()), w: p.w, h: p.h });
+      const L = window.LOGO_PDF;
       const d = new Date(), pad = (n) => String(n).padStart(2, "0");
-      const summary = totals.length ? {
-        title: "Total recepcionado",
-        subtitle: "Fecha: " + pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear() +
-                  "  ·  Remitos escaneados: " + pages.length,
-        note: unverified ? "* Incluye datos sin verificar de " + unverified + " página(s)." : "",
-        rows: totals.map((t) => ({ name: t.name, qtyText: OCR.formatQty(t.qty) }))
-      } : null;
-
-      const pdf = buildPdf(data, summary);
+      const pdf = buildPdf(data, {
+        company: COMPANY, title: name,
+        date: pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear(),
+        logo: L ? { bytes: b64ToBytes(L.b64), w: L.w, h: L.h } : null,
+        summary: rows.length ? { rows, note: "Cantidades ingresadas manualmente por el responsable de recepción." } : null
+      });
       const url = URL.createObjectURL(pdf);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = name + ".pdf";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      a.href = url; a.download = name + ".pdf";
+      document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-      setStatus("PDF “" + name + ".pdf” guardado en Descargas ✔", 6000);
-      if (await askConfirm("PDF guardado en Descargas.\n\n¿Querés vaciar las fotos para empezar un remito nuevo?", "Sí, vaciar", "No, dejarlas")) clearAll();
+      setStatus("PDF “" + name + ".pdf” guardado en Descargas ✔", 7000);
+      if (await askConfirm("PDF guardado en Descargas.\n\n¿Querés vaciar las fotos y las cantidades para empezar un lote nuevo?", "Sí, vaciar", "No, dejarlas")) clearAll();
     } catch (err) {
       console.error(err);
       setStatus("Error al generar el PDF: " + err.message, 8000);
     }
-  });
+  }
 
-  window.addEventListener("beforeunload", () => {
-    if (stream) stream.getTracks().forEach((t) => t.stop());
+  // ---------- Ajustes ----------
+  settingsBtn.addEventListener("click", () => {
+    catalogInput.value = settings.catalog;
+    hiResChk.checked = !!settings.hiRes;
+    settingsDialog.showModal();
   });
+  $("cancelSettings").addEventListener("click", () => settingsDialog.close());
+  $("saveSettings").addEventListener("click", () => {
+    settings.catalog = catalogInput.value;
+    settings.hiRes = hiResChk.checked;
+    persistSettings();
+    settingsDialog.close();
+    updateTotalsInfo();
+  });
+  $("resetCatalog").addEventListener("click", () => { catalogInput.value = DEFAULT_CATALOG.join("\n"); });
+  filterSelect.addEventListener("change", () => { settings.filterMode = filterSelect.value; persistSettings(); });
+  autoCropChk.addEventListener("change", () => { settings.autoCrop = autoCropChk.checked; persistSettings(); drawLive(null); });
+
+  window.addEventListener("beforeunload", () => { if (stream) stream.getTracks().forEach((t) => t.stop()); });
 
   // ---------- Inicio ----------
-  (async () => {
-    settings = await loadSettings();
-    autoCropChk.checked = settings.autoCrop !== false;
-    filterSelect.value = settings.filterMode || "mejorado";
-    render();
-    updateKeyHint();
-    startCamera();
-    liveLoop();
-  })();
+  $("verTag").textContent = "v" + APP_VERSION;
+  $("verLabel").textContent = APP_VERSION;
+  settings = loadSettings();
+  persistSettings();                 // limpia del navegador los datos de la lectura de texto de versiones anteriores
+  autoCropChk.checked = settings.autoCrop !== false;
+  filterSelect.value = settings.filterMode || "mejorado";
+  syncCards();
+  updateBusyUI();
+  startCamera();
+  liveLoop();
 
   // ---------- Instalación como aplicación ----------
   const installBtn = $("installBtn");

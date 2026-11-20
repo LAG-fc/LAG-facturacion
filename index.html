@@ -3,157 +3,168 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Escáner de Remitos</title>
-  <meta name="description" content="Escanea remitos con la cámara, recorta la hoja, lee las cantidades y arma un PDF con totales.">
-  <meta name="theme-color" content="#25282e">
+  <title>Escáner de Remitos · LAG Panificados</title>
+  <meta name="description" content="Escaneá los remitos con la cámara, cargá las cantidades recepcionadas y guardá todo en un PDF.">
+  <meta name="theme-color" content="#741420">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Remitos">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <h1>📄 Escáner de Remitos <span class="ver" id="verTag">v4.3</span></h1>
-    <div class="controls">
-      <label>Cámara
-        <select id="cameraSelect"></select>
-      </label>
-      <label>Modo
-        <select id="filterSelect">
-          <option value="mejorado" selected>Color mejorado (como CamScanner)</option>
-          <option value="documento">Documento (blanco y negro nítido)</option>
-          <option value="gris">Escala de grises</option>
-          <option value="color">Color original</option>
-        </select>
-      </label>
-      <label class="check"><input type="checkbox" id="autoCrop" checked> Recorte automático</label>
-      <button id="installBtn" class="btn small primary" hidden title="Instalar como aplicación">⬇ Instalar</button>
-      <button id="settingsBtn" class="btn small" title="Ajustes">⚙ Ajustes</button>
+  <!-- Íconos -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="logo.png" alt="LAG Panificados SRL">
+      <div class="brand-text">
+        <h1>Escáner de Remitos</h1>
+        <span>LAG PANIFICADOS SRL</span>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg>Instalar</button>
+      <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
+      <span class="ver" id="verTag">v5.0</span>
     </div>
   </header>
 
-  <main>
-    <section class="camera-panel">
+  <main class="layout">
+    <section class="card scan">
+      <div class="scan-toolbar">
+        <label class="field-inline">Cámara
+          <select id="cameraSelect"></select>
+        </label>
+        <label class="field-inline">Modo de imagen
+          <select id="filterSelect">
+            <option value="mejorado" selected>Color mejorado</option>
+            <option value="documento">Documento (blanco y negro)</option>
+            <option value="gris">Escala de grises</option>
+            <option value="color">Color original</option>
+          </select>
+        </label>
+        <label class="switch"><input type="checkbox" id="autoCrop" checked><span class="slider"></span><span class="switch-text">Recorte automático</span></label>
+      </div>
+
       <div class="video-wrap" id="videoWrap">
         <video id="video" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
-        <div id="stepsBadge" class="steps-badge" hidden></div>
+        <div id="detectPill" class="pill" hidden></div>
         <div id="flash"></div>
         <div id="cameraMsg" class="camera-msg">Iniciando cámara…</div>
       </div>
+
       <div class="actions">
-        <button id="captureBtn" class="btn primary big">📸 Sacar foto <span class="kbd">(Espacio)</span></button>
-        <button id="uploadBtn" class="btn big">📁 Subir foto</button>
+        <button id="captureBtn" class="btn primary big"><svg class="i"><use href="#i-camera"/></svg><span id="captureLabel">Sacar foto</span> <span class="kbd">Espacio</span></button>
+        <button id="uploadBtn" class="btn secondary big"><svg class="i"><use href="#i-upload"/></svg>Subir foto</button>
         <input type="file" id="fileInput" accept="image/*" multiple hidden>
       </div>
-      <p id="status" class="status"></p>
+      <p id="status" class="status" role="status"></p>
     </section>
 
-    <aside class="pages-panel" id="pagesPanel">
-      <div id="dropHint" class="drop-hint">Soltá las fotos acá</div>
+    <aside class="card pages" id="pagesPanel">
+      <div id="dropHint" class="drop-hint"><svg class="i"><use href="#i-upload"/></svg><span>Soltá las fotos acá</span></div>
       <div class="pages-header">
-        <h2>Páginas: <span id="count">0</span></h2>
-        <button id="clearBtn" class="btn small danger">Vaciar todo</button>
+        <h2>Remitos escaneados <span class="count" id="count">0</span></h2>
+        <button id="clearBtn" class="btn ghost small danger-text">Vaciar todo</button>
       </div>
       <div id="thumbs" class="thumbs"></div>
-      <p id="empty" class="empty">Todavía no hay fotos. Apuntá al remito y apretá “Sacar foto”, o arrastrá fotos hasta acá.</p>
-      <div class="totals">
-        <h3>Totales recepcionados</h3>
-        <table id="totalsTable"></table>
-        <p id="totalsEmpty" class="empty small">Sin datos todavía.</p>
+      <div id="empty" class="empty">
+        <svg class="i big"><use href="#i-image"/></svg>
+        <p>Todavía no hay remitos.</p>
+        <small>Apuntá la cámara a la hoja y tocá “Sacar foto”, o arrastrá las fotos hasta acá.</small>
       </div>
-      <button id="saveBtn" class="btn success big" disabled>💾 Guardar como PDF</button>
+      <div class="pages-footer">
+        <div class="totals-summary">
+          <div><strong>Tabla de recepciones</strong><span id="totalsInfo">Sin cantidades cargadas</span></div>
+          <button id="totalsBtn" class="btn soft small"><svg class="i"><use href="#i-list"/></svg>Cargar totales</button>
+        </div>
+        <button id="saveBtn" class="btn primary big wide" disabled><svg class="i"><use href="#i-download"/></svg>Guardar como PDF</button>
+      </div>
     </aside>
   </main>
 
   <!-- Avisos y preguntas -->
-  <dialog id="msgDialog">
+  <dialog id="msgDialog" class="dlg small-dlg">
     <p id="msgText" class="msg-text"></p>
     <div class="dialog-actions">
-      <button type="button" id="msgCancel" class="btn">Cancelar</button>
-      <button type="button" id="msgOk" class="btn success">Aceptar</button>
+      <button type="button" id="msgCancel" class="btn secondary">Cancelar</button>
+      <button type="button" id="msgOk" class="btn primary">Aceptar</button>
     </div>
   </dialog>
 
-  <!-- Nombre del PDF -->
-  <dialog id="nameDialog">
-    <form method="dialog" id="nameForm">
-      <h3>Nombre del PDF</h3>
-      <input id="nameInput" type="text" autocomplete="off" spellcheck="false">
-      <p class="hint">Se guardará en tu carpeta de Descargas (se agrega .pdf solo).</p>
+  <!-- Totales recepcionados (y nombre del PDF) -->
+  <dialog id="totalsDialog" class="dlg wide-dlg">
+    <form method="dialog" id="totalsForm" novalidate>
+      <div class="dlg-head">
+        <img src="logo.png" alt="" class="dlg-logo">
+        <div>
+          <h3>Tabla de recepciones</h3>
+          <p class="hint" id="totalsHint">Cargá la cantidad total recibida de cada producto. Los que dejes vacíos no aparecen en el PDF.</p>
+        </div>
+      </div>
+      <label class="field" id="nameField">Nombre del archivo PDF
+        <input id="nameInput" type="text" autocomplete="off" spellcheck="false">
+        <small class="hint">Se guarda en Descargas (el .pdf se agrega solo).</small>
+      </label>
+      <div class="tt-head"><span>N°</span><span>Producto</span><span>Cantidad total</span></div>
+      <div id="totalsRows" class="tt-rows"></div>
+      <div class="tt-tools">
+        <button type="button" id="addExtraBtn" class="btn ghost small"><svg class="i"><use href="#i-plus"/></svg>Agregar otro producto</button>
+        <button type="button" id="clearTotalsBtn" class="btn ghost small danger-text">Limpiar cantidades</button>
+      </div>
+      <p id="totalsErr" class="err" role="alert"></p>
+      <p class="hint">Podés escribir una suma, por ejemplo <b>120+35,5</b>. Se admite coma o punto decimal.</p>
       <div class="dialog-actions">
-        <button type="button" id="cancelName" class="btn">Cancelar</button>
-        <button type="submit" id="okName" class="btn success">Guardar</button>
+        <button type="button" id="totalsCancel" class="btn secondary">Cancelar</button>
+        <button type="submit" id="totalsOk" class="btn primary">Guardar PDF</button>
       </div>
     </form>
   </dialog>
 
+  <!-- Vista previa -->
+  <dialog id="previewDialog" class="dlg preview-dlg">
+    <button type="button" id="previewClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+    <img id="previewImg" alt="Remito">
+  </dialog>
+
   <!-- Ajustes -->
-  <dialog id="settingsDialog">
+  <dialog id="settingsDialog" class="dlg">
     <h3>Ajustes</h3>
-    <label class="field">Clave de Google Cloud Vision (API key)
-      <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="Pegá acá tu clave">
+    <label class="field">Productos de la tabla de recepciones (uno por línea)
+      <textarea id="catalogInput" rows="10" spellcheck="false"></textarea>
     </label>
     <div class="row-inline">
-      <button type="button" id="testKeyBtn" class="btn small">Probar clave</button>
-      <span id="keyMsg" class="hint"></span>
+      <button type="button" id="resetCatalog" class="btn ghost small">Restaurar lista original</button>
     </div>
-    <label class="field">Productos, en el mismo orden que las filas del remito (uno por línea, de arriba hacia abajo)
-      <textarea id="catalogInput" rows="9" spellcheck="false"></textarea>
-    </label>
-    <div class="row-inline">
-      <button type="button" id="resetCatalog" class="btn small">Restaurar lista original</button>
-    </div>
-    <p class="hint">La cantidad de la fila 1 se asigna al primer producto, la de la fila 2 al segundo, y así hasta la fila 19 (la última no trae producto). Si el remito cambia de orden o suma un producto, editá esta lista.</p>
-    <label class="field check"><input type="checkbox" id="hiResChk"> Usar la foto de máxima resolución de la cámara (si está disponible)</label>
-    <p id="usageLabel" class="hint"></p>
-    <p class="hint">Versión de la página: <b id="verLabel">4.3</b></p>
-    <label class="field">Exigencia de lectura
-      <select id="sensSelect">
-        <option value="estricta">Estricta (avisa ante cualquier duda)</option>
-        <option value="normal" selected>Normal</option>
-        <option value="flexible">Flexible (avisa solo si es muy dudoso)</option>
-      </select>
-    </label>
+    <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
+    <p class="hint">Versión de la página: <b id="verLabel">5.0</b></p>
     <div class="dialog-actions">
-      <button type="button" id="cancelSettings" class="btn">Cancelar</button>
-      <button type="button" id="saveSettings" class="btn success">Guardar ajustes</button>
+      <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
+      <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
     </div>
   </dialog>
 
-  <!-- Edición manual de datos de una página -->
-  <dialog id="editDialog" class="wide">
-    <h3>Datos de la página <span id="editNum"></span></h3>
-    <div class="edit-body">
-      <div class="edit-img">
-        <div class="imgwrap" id="editWrap"><img id="editImg" alt="Remito"></div>
-        <p class="hint legend"><span class="lg" style="background:#2ee06b"></span>Hoja
-          <span class="lg" style="background:#4da3ff"></span>Cantidades
-          <span class="lg" style="background:#ffd24d"></span>Filas
-          <span class="lg" style="background:#ff9d2e"></span>Con número (las únicas que se envían a Google)</p>
-      </div>
-      <div class="edit-table">
-        <div class="erow ehead"><span></span><span>Producto</span><span>Cantidad</span><span></span></div>
-        <div id="editRows" class="erows"></div>
-        <button type="button" id="addRowBtn" class="btn small">+ Agregar fila</button>
-        <p id="editErr" class="err"></p>
-      </div>
-    </div>
-    <div class="dialog-actions">
-      <button type="button" id="cancelEdit" class="btn">Cancelar</button>
-      <button type="button" id="saveEdit" class="btn success">Guardar datos</button>
-    </div>
-  </dialog>
-
+  <script src="logo-pdf.js"></script>
   <script src="crop.js"></script>
-  <script src="layout.js"></script>
-  <script src="rows.js"></script>
   <script src="enhance.js"></script>
-  <script src="ocr.js"></script>
   <script src="pdf.js"></script>
   <script src="scanner.js"></script>
 </body>
