@@ -42,7 +42,7 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg>Instalar</button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v5.1</span>
+      <span class="ver" id="verTag">v5.2</span>
     </div>
   </header>
 
@@ -130,6 +130,7 @@
       <label class="field" id="ocField">Orden de compra (OC)
         <input id="ocInput" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" spellcheck="false" placeholder="Ej.: 93035" maxlength="12">
         <small class="hint">Archivo: <b id="fileNamePreview">REMITOS_…</b>.pdf <span id="periodHint"></span></small>
+        <small class="hint" id="destHint"></small>
       </label>
       <div class="tt-head"><span>N°</span><span>Producto</span><span>Cantidad total</span></div>
       <div id="totalsRows" class="tt-rows"></div>
@@ -161,8 +162,22 @@
     <div class="row-inline">
       <button type="button" id="resetCatalog" class="btn ghost small">Restaurar lista original</button>
     </div>
+    <fieldset class="bridge">
+      <legend>Puente a Google Drive y Gmail</legend>
+      <label class="field">Dirección del puente (URL que termina en /exec)
+        <input id="bridgeUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec">
+      </label>
+      <label class="field">Clave
+        <input id="bridgeKey" type="password" autocomplete="off" spellcheck="false" placeholder="La clave que pusiste en el puente">
+      </label>
+      <div class="row-inline">
+        <button type="button" id="bridgeTest" class="btn ghost small">Probar conexión</button>
+        <span id="bridgeMsg" class="bridge-msg" role="status"></span>
+      </div>
+      <p class="hint">Con el puente configurado, “Guardar PDF” lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto; ya no se descarga en el dispositivo. Sin puente, el PDF se descarga como antes.</p>
+    </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">5.1</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">5.2</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>

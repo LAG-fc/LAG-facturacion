@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "5.1";
+  const APP_VERSION = "5.2";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 
@@ -22,7 +22,7 @@
     "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE",
     "SANDWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
   ];
-  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", hiRes: true, catalog: DEFAULT_CATALOG.join("\n") };
+  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n") };
   let settings = { ...DEFAULTS };
   let stream = null;
   let stillOk = null;               // null = sin probar; true/false = se puede / no se puede la foto de máxima resolución
@@ -647,6 +647,9 @@
     periodText.textContent = "día " + Period.text(p);
     periodSub.textContent = "(" + p.label + ")";
     periodHint.textContent = "· período " + Period.text(p);
+    $("destHint").textContent = bridgeReady()
+      ? "Se sube a Drive: " + Period.folderPath(totalsState.oc || "número", p) + " y queda un borrador en Gmail."
+      : "Puente a Drive/Gmail sin configurar: el PDF se descarga en el dispositivo.";
     fileNamePreview.textContent = "REMITOS_" + (totalsState.oc || "OC") + "_" + p.from + "_al_" + p.to;
   }
   periodSeg.addEventListener("click", (e) => {
@@ -705,7 +708,7 @@
     totalsMode = mode;
     const save = mode === "save";
     ocField.hidden = !save;
-    totalsOk.textContent = save ? "Guardar PDF" : "Aceptar";
+    totalsOk.textContent = save ? (bridgeReady() ? "Guardar y enviar" : "Guardar PDF") : "Aceptar";
     totalsHint.textContent = save
       ? "Cargá la cantidad total recibida de cada producto antes de guardar. Los que dejes vacíos no aparecen en el PDF."
       : "Cargá la cantidad total recibida de cada producto. Quedan guardadas hasta que vacíes todo.";
@@ -810,7 +813,50 @@
     openTotals("save");
   });
 
+  // ---------- Puente a Google Drive y Gmail ----------
+  const bridgeReady = () => /^https:\/\/script\.google(usercontent)?\.com\//.test(String(settings.bridgeUrl || "").trim()) && !!String(settings.bridgeKey || "").trim();
+  const blobToBase64 = (blob) => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",")[1] || "");
+    r.onerror = () => rej(new Error("No se pudo leer el PDF"));
+    r.readAsDataURL(blob);
+  });
+  // Envía el PDF al puente. Lanza Error con un mensaje claro si algo falla.
+  async function sendToBridge(pdfBlob, name, period) {
+    const MAX = 17 * 1024 * 1024;                      // Gmail admite ~25 MB; en base64 el archivo crece un tercio
+    if (pdfBlob.size > MAX) throw new Error("El PDF pesa " + (pdfBlob.size / 1048576).toFixed(1) + " MB y es demasiado grande para adjuntarlo en Gmail (máximo ~17 MB). Dividí el lote en dos.");
+    const now = new Date();
+    const payload = {
+      key: String(settings.bridgeKey).trim(), oc: totalsState.oc, filename: name, year: period.year, month: period.month,
+      subject: Period.emailSubject(totalsState.oc, period), body: Period.emailBody(totalsState.oc, period, now),
+      pdf: await blobToBase64(pdfBlob)
+    };
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 180000);
+    let res;
+    try {
+      res = await fetch(String(settings.bridgeUrl).trim(), { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload), redirect: "follow", signal: ctl.signal });
+    } catch (e) {
+      throw new Error(e.name === "AbortError" ? "El envío tardó demasiado (probá con mejor señal)." : "No se pudo completar la conexión con Google (revisá internet y la dirección del puente). Si dudás, mirá Drive y los Borradores de Gmail antes de reintentar, por si el envío sí llegó.");
+    } finally { clearTimeout(timer); }
+    let out;
+    try { out = await res.json(); }
+    catch (e) { throw new Error("El puente no respondió como se esperaba. Revisá que esté implementado con acceso “Cualquier persona”."); }
+    if (!out.ok) throw new Error(out.error === "Clave incorrecta" ? "La clave del puente no coincide (revisá Ajustes)." : "El puente informó: " + (out.error || "error desconocido"));
+    return out;
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  let sending = false;
   async function savePdf(name, rows, period) {
+    if (sending) return;
+    sending = true; saveBtn.disabled = true;
     setStatus("Generando PDF…", 0);
     try {
       const ok = pages.filter((p) => p.status === "ok" && p.blob);
@@ -824,16 +870,28 @@
         logo: L ? { bytes: b64ToBytes(L.b64), w: L.w, h: L.h } : null,
         summary: rows.length ? { rows, note: "Cantidades ingresadas manualmente por el responsable de recepción." } : null
       });
-      const url = URL.createObjectURL(pdf);
-      const a = document.createElement("a");
-      a.href = url; a.download = name + ".pdf";
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-      setStatus("PDF “" + name + ".pdf” guardado en Descargas ✔", 7000);
-      if (await askConfirm("PDF guardado en Descargas.\n\n¿Querés vaciar las fotos y las cantidades para empezar un lote nuevo?", "Sí, vaciar", "No, dejarlas")) clearAll();
+      let sent = null, failMsg = "";
+      if (bridgeReady()) {
+        setStatus("Enviando a Google Drive y Gmail…", 0);
+        try { sent = await sendToBridge(pdf, name, period); } catch (e) { failMsg = e.message; }
+      }
+      if (sent) {
+        setStatus("Enviado ✔ " + name + ".pdf", 8000);
+        const q = "PDF guardado en Drive:\n" + sent.carpeta + (sent.reemplazado ? "\n(reemplazó un PDF con el mismo nombre; el anterior está en la papelera de Drive)" : "") +
+          "\n\nBorrador creado en Gmail para revisar y enviar.\n\n¿Querés vaciar las fotos y las cantidades para empezar un lote nuevo?";
+        if (await askConfirm(q, "Sí, vaciar", "No, dejarlas")) clearAll();
+      } else {
+        // Sin puente o con error: se descarga en el dispositivo para no perder el trabajo
+        downloadBlob(pdf, name + ".pdf");
+        setStatus("PDF “" + name + ".pdf” guardado en Descargas", 7000);
+        const why = bridgeReady() ? "No se pudo enviar a Drive/Gmail: " + failMsg + "\n\nEl PDF se descargó en este dispositivo para que no lo pierdas." : "El PDF se descargó en este dispositivo (el puente a Drive/Gmail no está configurado en Ajustes).";
+        if (await askConfirm(why + "\n\n¿Querés vaciar las fotos y las cantidades para empezar un lote nuevo?", "Sí, vaciar", "No, dejarlas")) clearAll();
+      }
     } catch (err) {
       console.error(err);
       setStatus("Error al generar el PDF: " + err.message, 8000);
+    } finally {
+      sending = false; saveBtn.disabled = !pages.some((p) => p.status === "ok");
     }
   }
 
@@ -841,15 +899,33 @@
   settingsBtn.addEventListener("click", () => {
     catalogInput.value = settings.catalog;
     hiResChk.checked = !!settings.hiRes;
+    $("bridgeUrl").value = settings.bridgeUrl || "";
+    $("bridgeKey").value = settings.bridgeKey || "";
+    $("bridgeMsg").textContent = ""; $("bridgeMsg").className = "bridge-msg";
     settingsDialog.showModal();
   });
   $("cancelSettings").addEventListener("click", () => settingsDialog.close());
   $("saveSettings").addEventListener("click", () => {
     settings.catalog = catalogInput.value;
     settings.hiRes = hiResChk.checked;
+    settings.bridgeUrl = $("bridgeUrl").value.trim();
+    settings.bridgeKey = $("bridgeKey").value.trim();
     persistSettings();
     settingsDialog.close();
     updateTotalsInfo();
+  });
+  $("bridgeTest").addEventListener("click", async () => {
+    const url = $("bridgeUrl").value.trim(), key = $("bridgeKey").value.trim(), msg = $("bridgeMsg");
+    const show = (t, good) => { msg.textContent = t; msg.className = "bridge-msg " + (good ? "good" : "bad"); };
+    if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) { show("La dirección debe empezar con https://script.google.com/…", false); return; }
+    if (!key) { show("Falta la clave.", false); return; }
+    show("Probando…", true);
+    try {
+      const res = await fetch(url + (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(key), { redirect: "follow" });
+      const out = await res.json();
+      if (out.ok) show("Conexión correcta ✔ (borradores para " + out.destinatario + ")", true);
+      else show(out.error === "Clave incorrecta" ? "La clave no coincide con la del puente." : "El puente respondió: " + out.error, false);
+    } catch (e) { show("No se pudo conectar. Revisá internet, la dirección y que el acceso sea “Cualquier persona”.", false); }
   });
   $("resetCatalog").addEventListener("click", () => { catalogInput.value = DEFAULT_CATALOG.join("\n"); });
   filterSelect.addEventListener("change", () => { settings.filterMode = filterSelect.value; persistSettings(); });

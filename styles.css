@@ -82,7 +82,7 @@ button, select, input, textarea { font: inherit; color: inherit; }
 .scan { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 .scan-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 18px; }
 .field-inline { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); min-width: 0; }
-select, input[type=text], textarea {
+select, input[type=text], input[type=password], textarea {
   background: #fff; border: 1px solid var(--line-strong); border-radius: 9px; padding: 8px 10px; font-size: 14px; color: var(--ink); max-width: 100%;
 }
 .field-inline select { text-transform: none; letter-spacing: 0; font-weight: 500; min-width: 150px; max-width: 260px; }
@@ -243,3 +243,12 @@ textarea { resize: vertical; line-height: 1.5; font-family: var(--sans); }
   .seg { width: 100%; }
   .seg-btn { flex: 1; }
 }
+
+/* ---- v5.2: puente a Drive / Gmail ---- */
+.bridge { border: 1px solid var(--line-strong); border-radius: 12px; padding: 4px 14px 12px; margin: 14px 0 6px; background: var(--wine-soft); }
+.bridge legend { padding: 0 8px; font-weight: 700; color: var(--wine); font-size: 13px; }
+.bridge input { width: 100%; }
+.bridge-msg { font-size: 13px; font-weight: 600; }
+.bridge-msg.good { color: #1e7a3c; }
+.bridge-msg.bad { color: #b3261e; }
+#destHint { display: block; margin-top: 2px; }

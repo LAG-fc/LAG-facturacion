@@ -1,4 +1,4 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 5.1
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 5.2
 =======================================================
 
 QUÉ HACE
@@ -18,6 +18,13 @@ QUÉ HACE
     (ej. REMITOS_93035_15_al_21). Si querés otra regla, avisá.
   La OC y el período también aparecen en el encabezado de cada remito y en la tabla del PDF.
   El número de OC queda guardado hasta "Vaciar todo".
+- ENVÍO A GOOGLE DRIVE Y GMAIL (v5.2): con el "puente" configurado (ver carpeta puente-google), "Guardar y enviar"
+  sube el PDF a Mi unidad/OC-<año>/<MES>/OC-<número> y deja un BORRADOR de Gmail para cuentasapagar@cook-master.com.ar
+  con el PDF adjunto. El PDF ya NO se descarga en el dispositivo; solo se descarga si el envío falla
+  (para no perder el trabajo) o si todavía no configuraste el puente. La carpeta del mes es la del período de los remitos.
+  Asunto: "Remitos OC 93035 – período 15 al 21". Mensaje: saludo según la hora (Buenos días / Buenas tardes / Buenas noches),
+  "adjunto remitos correspondientes a la OC 93035 (periodo 15/11 al 21/11)." y "Saludos.".
+  Pasos de configuración: puente-google/INSTRUCCIONES-PUENTE.txt, y después Ajustes > Puente a Google Drive y Gmail.
 - La lista de productos se edita en Ajustes (uno por línea).
 - Ya NO lee texto automáticamente (se quitó Google Cloud Vision). No hace falta ninguna clave.
 
@@ -26,9 +33,9 @@ CÓMO ACTUALIZAR EN GITHUB (si ya la publicaste)
 2. BORRÁ estos archivos viejos (ya no se usan): ocr.js, layout.js, rows.js
    (se abren, tocás los tres puntitos > "Delete file" > "Commit changes").
 3. "Add file" > "Upload files" y arrastrá TODO el contenido de esta carpeta (incluida la carpeta icons).
-   Archivo nuevo en esta versión: period.js (obligatorio). Los demás reemplazan a los que tenías.
+   Archivos nuevos desde la v5.1: period.js (obligatorio). La carpeta puente-google NO se sube a GitHub (es para Google Apps Script). Los demás reemplazan a los que tenías.
 4. "Commit changes". En 1–2 minutos se publica.
-5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v5.1.
+5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v5.2.
    Si la tenías instalada con el ícono viejo, el ícono nuevo puede tardar en cambiar (o reinstalala).
 
 RECOMENDACIÓN
