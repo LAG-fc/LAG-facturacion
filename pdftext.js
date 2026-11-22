@@ -29,10 +29,10 @@
         if (bin[ds] === "\n") ds++;
         let de = bin.indexOf("endstream", ds);
         if (de === -1) de = bin.length;
-        o = { num, dict: bin.slice(start, sp), ds, de };
+        o = { num, gen: Number(m[2]), dict: bin.slice(start, sp), ds, de };
         re.lastIndex = de + 9;
       } else {
-        o = { num, dict: bin.slice(start, endobj === -1 ? bin.length : endobj) };
+        o = { num, gen: Number(m[2]), dict: bin.slice(start, endobj === -1 ? bin.length : endobj) };
         if (endobj !== -1) re.lastIndex = endobj + 6;
       }
       objs.set(num, o);
@@ -75,6 +75,7 @@
     return new Uint8Array(out);
   }
 
+  let decrypt = null;                       // descifrado del PDF actual (null si no está protegido)
   async function streamOf(objs, bytes, n) {
     const o = objs.get(n);
     if (!o || o.ds === undefined) return "";
@@ -82,6 +83,7 @@
     // quita el salto de línea que precede a "endstream"
     if (data.length && data[data.length - 1] === 10) data = data.subarray(0, data.length - 1);
     if (data.length && data[data.length - 1] === 13) data = data.subarray(0, data.length - 1);
+    if (decrypt) data = await decrypt(data, n, o.gen || 0);
     const f = /\/Filter\s*(\[[^\]]*\]|\/\w+)/.exec(o.dict);
     if (f) {
       const a85 = /ASCII85Decode|\/A85\b/.test(f[1]);
@@ -178,19 +180,47 @@
     return items.filter((it) => it.str.trim() !== "").map((it) => ({ x: Math.round(it.x * 100) / 100, y: Math.round(it.y * 100) / 100, str: it.str.replace(/\s+$/, "") }));
   }
 
+  // ---- protección con clave de usuario vacía ----
+  function strAt(s, i) {                       // texto binario en s[i] ("<hex>" o "(literal)")
+    if (s[i] === "<") { const hex = s.slice(i + 1, s.indexOf(">", i)).replace(/\s+/g, ""); let out = ""; for (let k = 0; k + 1 < hex.length + 1; k += 2) out += String.fromCharCode(parseInt(hex.substr(k, 2).padEnd(2, "0"), 16)); return out; }
+    return s[i] === "(" ? readString(s, i).str : "";
+  }
+  function pdfString(dict, key) {
+    const m = new RegExp("/" + key + "\\s*[<(]").exec(dict); if (!m) return "";
+    return strAt(dict, m.index + m[0].length - 1);
+  }
+  async function buildDecryptor(dict, bin) {
+    const num = (k, d) => { const m = new RegExp("/" + k + "\\s*(-?\\d+)").exec(dict); return m ? Number(m[1]) : d; };
+    const idm = /\/ID\s*\[\s*(?=[<(])/.exec(bin), id0 = idm ? strAt(bin, idm.index + idm[0].length) : "";
+    const V = num("V", 1), aes = /\/CFM\s*\/AESV[23]/.test(dict);
+    const C = root.PdfCrypt || require("./pdfcrypt.js");
+    return await C.makeDecryptor({ R: num("R", 2), P: num("P", 0), Length: V >= 4 ? 128 : num("Length", 40), O: pdfString(dict, "O"), U: pdfString(dict, "U"), UE: pdfString(dict, "UE"), id0, aes, encMeta: !/\/EncryptMetadata\s*false/.test(dict) });
+  }
+
   async function extract(arrayBuffer) {
     const bytes = new Uint8Array(arrayBuffer);
     if (String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== "%PDF") throw new Error("El archivo no es un PDF.");
     let bin = ""; for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
-    if (/\/Encrypt\b/.test(bin.slice(-2000))) throw new Error("El PDF está protegido con contraseña.");
     const objs = parseObjects(bin);
+    decrypt = null;
+    const em = /\/Encrypt\s*(\d+)\s+(\d+)\s+R/.exec(bin), inl = !em && /\/Encrypt\s*<</.exec(bin);
+    if (em || inl) {
+      const dict = em ? (objs.get(Number(em[1])) || {}).dict : bin.slice(inl.index, inl.index + 3000);
+      if (!dict) throw new Error("El PDF está protegido y no pude leer su protección.");
+      decrypt = await buildDecryptor(dict, bin);
+    }
     const pages = [];
-    for (const pn of pageList(objs)) {
-      const d = objs.get(pn).dict;
-      const m = /\/Contents\s*(\[[^\]]*\]|\d+\s+\d+\s+R)/.exec(d);
-      let text = "";
-      if (m) for (const r of refs(m[1])) text += (await streamOf(objs, bytes, r)) + "\n";
-      pages.push({ items: pageItems(text) });
+    try {
+      for (const pn of pageList(objs)) {
+        const d = objs.get(pn).dict;
+        const m = /\/Contents\s*(\[[^\]]*\]|\d+\s+\d+\s+R)/.exec(d);
+        let text = "";
+        if (m) for (const r of refs(m[1])) text += (await streamOf(objs, bytes, r)) + "\n";
+        pages.push({ items: pageItems(text) });
+      }
+    } catch (e) {
+      if (decrypt) throw new Error("El PDF tiene una contraseña de apertura y no se puede leer automáticamente.");
+      throw e;
     }
     return { pages, hasText: pages.some((p) => p.items.length > 0) };
   }
