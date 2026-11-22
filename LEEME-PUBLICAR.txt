@@ -1,4 +1,4 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 6.2
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 7.0
 =======================================================
 
 QUÉ HACE
@@ -55,7 +55,7 @@ CÓMO ACTUALIZAR EN GITHUB (si ya la publicaste)
 3. "Add file" > "Upload files" y arrastrá TODO el contenido de esta carpeta (incluida la carpeta icons).
    Archivos nuevos: period.js, pdftext.js, ocparse.js, oc.js (obligatorios). La carpeta puente-google NO se sube a GitHub (es para Google Apps Script). Los demás reemplazan a los que tenías.
 4. "Commit changes". En 1–2 minutos se publica.
-5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v6.2.
+5. En el celular, abrí la aplicación con internet y cerrala y abrila dos veces. Arriba debe decir v7.0.
    Si la tenías instalada con el ícono viejo, el ícono nuevo puede tardar en cambiar (o reinstalala).
 
 RECOMENDACIÓN
@@ -76,3 +76,16 @@ NOVEDAD v6.2 — LECTURA CORRECTA DEL EXCEL DE DESPACHOS
 - Alcaidía, UP 59, UP 60 y La Plata se toman como PAN MIGNON BLANCO. Sus cantidades diarias se leen de la lista de la hoja del cliente
   (Merlo / SAE La Plata), porque la hoja anterior solo trae totales sueltos. Si en el período aparece otro producto, la página avisa.
 - Para el mes completo de Merlo se compara con el total de la hoja anterior (Hoja3) y se avisa si no coincide.
+
+
+NOVEDAD v7.0 — SECCIÓN "FACTURACIÓN"
+- La sección "Órdenes de compra" ahora se llama "Facturación". Las OC quedan en una lista a la izquierda (arriba en el celular),
+  cada una con su cliente, su período y el porcentaje facturado. Las que llegan al 100 % se ocultan (botón "Mostrar las completas").
+- Facturas: la página mira la carpeta Mi unidad/OC-<año>/<MES>/OC-<número>, lee las facturas (nombre 30719496411_001_00001_00000014.pdf)
+  y suma el importe total. Facturas (001) y Facturas de Crédito Electrónicas (201) suman; Notas de Crédito (003 y 203) restan.
+  Porcentaje = facturado ÷ total a facturar (cantidades del Excel × precios de la OC, con IVA).
+- Si el cliente no figura en el Excel (o no se eligió), se usan las cantidades pedidas en la OC.
+- Si una factura no se puede leer, se escribe el importe a mano en la lista de facturas.
+- Excel de CC y CS: se suman las columnas de los días del período usando las fechas de la fila de encabezado.
+- Períodos nuevos: semanas 1 a 5 (además de quincenas, mes y días a elección).
+- IMPORTANTE: hay que actualizar el puente de Google a la versión 4 (ver INSTRUCCIONES-PUENTE.txt).

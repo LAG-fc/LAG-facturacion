@@ -1,8 +1,8 @@
 // sw.js — permite instalar la página y que abra aunque no haya internet.
 // Guarda en el celular/PC los archivos de la aplicación.
-const VERSION = "remitos-v6.2.0";
+const VERSION = "remitos-v7.0.0";
 const FILES = [
-  "./", "index.html", "styles.css", "crop.js", "enhance.js", "period.js", "pdftext.js", "ocparse.js", "xlsx.js", "despachos.js", "pdf.js", "scanner.js", "oc.js", "logo-pdf.js", "logo.png",
+  "./", "index.html", "styles.css", "crop.js", "enhance.js", "period.js", "pdftext.js", "ocparse.js", "factparse.js", "xlsx.js", "despachos.js", "pdf.js", "scanner.js", "oc.js", "logo-pdf.js", "logo.png",
   "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png",
   "icons/apple-touch-icon.png", "icons/favicon-32.png"
 ];

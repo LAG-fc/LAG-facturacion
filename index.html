@@ -44,13 +44,13 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg>Instalar</button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v6.2</span>
+      <span class="ver" id="verTag">v7.0</span>
     </div>
   </header>
 
   <nav class="tabs" id="tabs" role="tablist" aria-label="Secciones">
     <button type="button" class="tab" role="tab" id="tabRemitos" data-view="remitos" aria-selected="true"><svg class="i"><use href="#i-camera"/></svg>Remitos</button>
-    <button type="button" class="tab" role="tab" id="tabOc" data-view="oc" aria-selected="false"><svg class="i"><use href="#i-file"/></svg>Órdenes de compra</button>
+    <button type="button" class="tab" role="tab" id="tabOc" data-view="oc" aria-selected="false"><svg class="i"><use href="#i-file"/></svg>Facturación</button>
   </nav>
 
   <main class="layout" id="remitosView">
@@ -96,7 +96,7 @@
     <aside class="card pages" id="pagesPanel">
       <div id="dropHint" class="drop-hint"><svg class="i"><use href="#i-upload"/></svg><span>Soltá las fotos acá</span></div>
       <div class="pages-header">
-        <h2>Remitos escaneados <span class="count" id="count">0</span></h2>
+        <h2>Remitos escaneados <span class="cnt" id="count">0</span></h2>
         <button id="clearBtn" class="btn ghost small danger-text">Vaciar todo</button>
       </div>
       <div id="thumbs" class="thumbs"></div>
@@ -115,83 +115,118 @@
     </aside>
   </main>
 
-  <!-- ===== Sección: órdenes de compra (independiente de la de remitos) ===== -->
+  <!-- ===== Sección: facturación (independiente de la de remitos) ===== -->
   <main class="oc-view" id="ocView" hidden>
     <section class="card oc-head">
-      <div>
-        <h2>Órdenes de compra</h2>
-        <p class="hint">Cargá la OC del cliente, pegá las entregas del período desde Excel y obtené la tabla de facturación.</p>
+      <div class="oc-head-txt">
+        <h2>Facturación</h2>
+        <p class="hint" id="ocExcelInfo">Buscá las órdenes de compra del mes y controlá cuánto falta facturar de cada una.</p>
       </div>
       <div class="oc-head-btns">
         <button id="ocMonthBtn" type="button" class="btn primary"><svg class="i"><use href="#i-download"/></svg>Buscar OC del mes</button>
+        <button id="facRefresh" type="button" class="btn soft" title="Vuelve a mirar las carpetas de Drive en busca de facturas nuevas"><svg class="i"><use href="#i-rotate"/></svg>Actualizar facturas</button>
         <button id="ocAddBtn" type="button" class="btn secondary"><svg class="i"><use href="#i-plus"/></svg>Agregar OC</button>
       </div>
     </section>
-    <p id="ocExcelInfo" class="badge good" hidden></p>
+    <p id="facStatus" class="hint fac-status" hidden></p>
 
-    <div id="ocList" class="oc-list"></div>
-    <section id="ocEmpty" class="card empty">
-      <svg class="i big"><use href="#i-file"/></svg>
-      <p>Todavía no cargaste ninguna OC.</p>
-      <small>Tocá “Agregar OC”, escribí el número y subí el PDF de la orden de compra.</small>
-    </section>
+    <div class="fac-layout">
+      <aside class="fac-side" id="facSide" aria-label="Órdenes de compra">
+        <div id="facMonth" class="fac-month" hidden></div>
+        <div id="ocList" class="oc-list"></div>
+        <button id="ocShowDone" type="button" class="link-btn" hidden></button>
+      </aside>
 
-    <div id="ocDetail" hidden>
-      <section class="card oc-step">
-        <div class="oc-step-head"><span class="step-n">1</span><h3>Productos de la OC <b id="ocTitle"></b></h3></div>
-        <p class="hint" id="ocMeta"></p>
-        <div id="ocIvaBadge" class="badge"></div>
-        <div class="table-wrap">
-          <table class="oc-table" id="ocItemsTable">
-            <thead><tr><th>DESCRIPCIÓN</th><th class="num">PRECIO (sin IVA)</th><th class="ctr">IVA</th></tr></thead>
-            <tbody></tbody>
-          </table>
+      <div class="fac-main">
+        <section id="ocEmpty" class="card empty">
+          <svg class="i big"><use href="#i-file"/></svg>
+          <p id="ocEmptyText">Todavía no cargaste ninguna OC.</p>
+          <small id="ocEmptySub">Tocá “Buscar OC del mes” o “Agregar OC”.</small>
+        </section>
+
+        <div id="ocDetail" hidden>
+          <section class="card oc-top">
+            <div class="oc-top-row">
+              <div>
+                <h3 class="oc-name">OC <b id="ocTitle"></b></h3>
+                <p class="hint" id="ocMeta"></p>
+              </div>
+              <div class="client-row">
+                <label class="field-inline">Cliente
+                  <select id="ocClient"></select>
+                </label>
+                <label class="field-inline">Período a facturar
+                  <select id="ocPeriod">
+                    <option value="">— elegir —</option>
+                    <option value="q1">1ª quincena (1 al 15)</option>
+                    <option value="q2">2ª quincena (16 al fin)</option>
+                    <option value="mes">Mes completo</option>
+                    <option value="w1">Semana 1 (1 al 7)</option>
+                    <option value="w2">Semana 2 (8 al 14)</option>
+                    <option value="w3">Semana 3 (15 al 21)</option>
+                    <option value="w4">Semana 4 (22 al 28)</option>
+                    <option value="w5">Semana 5 (29 al fin)</option>
+                    <option value="custom">Otros días…</option>
+                  </select>
+                </label>
+                <span id="ocCustom" class="custom-days" hidden>
+                  <label class="field-inline">Desde<input id="ocFrom" type="text" inputmode="numeric" maxlength="2"></label>
+                  <label class="field-inline">Hasta<input id="ocTo" type="text" inputmode="numeric" maxlength="2"></label>
+                </span>
+              </div>
+            </div>
+            <p id="ocAutoInfo" class="hint"></p>
+            <div id="ocBill" class="bill"></div>
+          </section>
+
+          <details class="card sec" id="secFact" open>
+            <summary>Facturas <span id="facCount" class="cnt"></span></summary>
+            <div id="facBody" class="sec-body"></div>
+          </details>
+
+          <details class="card sec" id="secInv" open>
+            <summary>Tabla de facturación</summary>
+            <div class="sec-body">
+              <div class="sec-tools"><button id="ocCopyBtn" type="button" class="btn soft small"><svg class="i"><use href="#i-copy"/></svg>Copiar tabla</button></div>
+              <div id="ocWarn"></div>
+              <div class="table-wrap">
+                <table class="oc-table" id="ocInvTable">
+                  <thead><tr><th>DESCRIPCIÓN</th><th class="num">CANTIDAD</th><th class="num">PRECIO</th><th class="ctr">IVA</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div id="ocInvTotals" class="inv-totals"></div>
+              <p id="ocOmitted" class="hint"></p>
+            </div>
+          </details>
+
+          <details class="card sec" id="secDel">
+            <summary>Entregas y coincidencias <span id="ocDelMini" class="cnt"></span></summary>
+            <div class="sec-body">
+              <p class="hint"><b>Opcional:</b> si preferís no usar el Excel de Despachos, copiá las celdas desde Excel y pegalas acá (tiene prioridad). <b>Primera columna:</b> descripción del producto. <b>Siguientes columnas:</b> cantidad entregada cada día.</p>
+              <textarea id="ocPaste" rows="5" spellcheck="false" placeholder="Pegá acá la tabla copiada de Excel…"></textarea>
+              <div class="row-inline"><button id="ocPasteClear" type="button" class="btn ghost small danger-text">Borrar lo pegado</button><span id="ocPasteInfo" class="hint"></span></div>
+              <details id="ocReviewBox" class="review" hidden>
+                <summary id="ocReviewSummary">Coincidencias con la OC</summary>
+                <div class="table-wrap"><table class="oc-table" id="ocReviewTable"><thead><tr><th>EN TU TABLA</th><th class="num">SUMA</th><th>PRODUCTO DE LA OC</th></tr></thead><tbody></tbody></table></div>
+              </details>
+            </div>
+          </details>
+
+          <details class="card sec" id="secIva">
+            <summary>Productos e IVA de la OC <span id="ocIvaMini" class="cnt"></span></summary>
+            <div class="sec-body">
+              <div id="ocIvaBadge" class="badge"></div>
+              <div class="table-wrap">
+                <table class="oc-table" id="ocItemsTable">
+                  <thead><tr><th>DESCRIPCIÓN</th><th class="num">PRECIO (sin IVA)</th><th class="ctr">IVA</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </details>
         </div>
-      </section>
-
-      <section class="card oc-step">
-        <div class="oc-step-head"><span class="step-n">2</span><h3>Cliente y entregas del período</h3></div>
-        <div class="client-row">
-          <label class="field-inline">Cliente de esta OC
-            <select id="ocClient"></select>
-          </label>
-          <label class="field-inline">Período a facturar
-            <select id="ocPeriod">
-              <option value="">— elegir —</option>
-              <option value="q1">1ª quincena (días 1 al 15)</option>
-              <option value="q2">2ª quincena (día 16 en adelante)</option>
-              <option value="mes">Mes completo</option>
-              <option value="custom">Otros días…</option>
-            </select>
-          </label>
-          <span id="ocCustom" class="custom-days" hidden>
-            <label class="field-inline">Desde el día<input id="ocFrom" type="text" inputmode="numeric" maxlength="2"></label>
-            <label class="field-inline">Hasta el día<input id="ocTo" type="text" inputmode="numeric" maxlength="2"></label>
-          </span>
-        </div>
-        <p id="ocAutoInfo" class="hint"></p>
-        <p class="hint"><b>Opcional:</b> si preferís no usar el Excel de Despachos, copiá las celdas desde Excel y pegalas acá (tiene prioridad). <b>Primera columna:</b> descripción del producto. <b>Siguientes columnas:</b> cantidad entregada cada día.</p>
-        <textarea id="ocPaste" rows="6" spellcheck="false" placeholder="Pegá acá la tabla copiada de Excel…"></textarea>
-        <div class="row-inline"><button id="ocPasteClear" type="button" class="btn ghost small danger-text">Borrar lo pegado</button><span id="ocPasteInfo" class="hint"></span></div>
-        <details id="ocReviewBox" class="review" hidden>
-          <summary id="ocReviewSummary">Coincidencias con la OC</summary>
-          <div class="table-wrap"><table class="oc-table" id="ocReviewTable"><thead><tr><th>EN TU TABLA</th><th class="num">SUMA</th><th>PRODUCTO DE LA OC</th></tr></thead><tbody></tbody></table></div>
-        </details>
-      </section>
-
-      <section class="card oc-step">
-        <div class="oc-step-head"><span class="step-n">3</span><h3>Tabla de facturación</h3>
-          <button id="ocCopyBtn" type="button" class="btn soft small"><svg class="i"><use href="#i-copy"/></svg>Copiar tabla</button></div>
-        <div id="ocWarn"></div>
-        <div class="table-wrap">
-          <table class="oc-table" id="ocInvTable">
-            <thead><tr><th>DESCRIPCIÓN</th><th class="num">CANTIDAD</th><th class="num">PRECIO</th><th class="ctr">IVA</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <div id="ocInvTotals" class="inv-totals"></div>
-        <p id="ocOmitted" class="hint"></p>
-      </section>
+      </div>
     </div>
   </main>
 
@@ -301,7 +336,7 @@
       <p class="hint">Con el puente configurado, “Guardar PDF” lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto; ya no se descarga en el dispositivo. Sin puente, el PDF se descarga como antes.</p>
     </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">6.2</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">7.0</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
@@ -314,6 +349,7 @@
   <script src="period.js"></script>
   <script src="pdftext.js"></script>
   <script src="ocparse.js"></script>
+  <script src="factparse.js"></script>
   <script src="xlsx.js"></script>
   <script src="despachos.js"></script>
   <script src="pdf.js"></script>

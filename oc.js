@@ -1,17 +1,19 @@
-// oc.js — Sección "Órdenes de compra": buscar las OC y el Excel de Despachos del mes en Drive (o cargar una OC a mano),
-// asignar el cliente, deducir el IVA y armar la tabla de facturación. No toca nada de la sección de remitos.
+// oc.js — Sección "Facturación": buscar las OC y el Excel de Despachos del mes en Drive (o cargar una OC a mano),
+// asignar el cliente, deducir el IVA, armar la tabla de facturación y controlar el porcentaje facturado con las facturas
+// que hay en la carpeta de cada OC. No toca nada de la sección de remitos.
 (() => {
   "use strict";
-  const O = window.OcParse, D = window.Despachos, $ = (id) => document.getElementById(id);
+  const O = window.OcParse, D = window.Despachos, F = window.FactParse, $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
 
   // ---------- Datos guardados en el navegador ----------
   let ocs = [], aliases = {}, clientAliases = {}, currentId = null;
+  let facCache = {}, showDone = false, lastMes = "", editing = {};   // facCache: facturas ya leídas (por id de archivo de Drive)
   let excel = null;                                   // Excel de Despachos leído (solo en memoria): {name, wb, loadedAt}
   const jget = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v === null ? d : v; } catch (e) { return d; } };
-  const load = () => { ocs = jget("ocData", []); if (!Array.isArray(ocs)) ocs = []; aliases = jget("ocAliases", {}) || {}; clientAliases = jget("ocClientAliases", {}) || {}; };
-  const save = () => { try { localStorage.setItem("ocData", JSON.stringify(ocs)); localStorage.setItem("ocAliases", JSON.stringify(aliases)); localStorage.setItem("ocClientAliases", JSON.stringify(clientAliases)); } catch (e) { /* nada */ } };
+  const load = () => { ocs = jget("ocData", []); if (!Array.isArray(ocs)) ocs = []; aliases = jget("ocAliases", {}) || {}; clientAliases = jget("ocClientAliases", {}) || {}; facCache = jget("facCache", {}) || {}; showDone = !!jget("facShowDone", false); lastMes = jget("facLastMes", "") || ""; };
+  const save = () => { try { localStorage.setItem("ocData", JSON.stringify(ocs)); localStorage.setItem("ocAliases", JSON.stringify(aliases)); localStorage.setItem("ocClientAliases", JSON.stringify(clientAliases)); localStorage.setItem("facCache", JSON.stringify(facCache)); localStorage.setItem("facShowDone", JSON.stringify(showDone)); localStorage.setItem("facLastMes", JSON.stringify(lastMes)); } catch (e) { /* nada */ } };
   const cur = () => ocs.find((x) => x.id === currentId) || null;
 
   // ---------- Pestañas ----------
@@ -26,29 +28,65 @@
   }
   $("tabs").addEventListener("click", (e) => { const b = e.target.closest(".tab"); if (b) showView(b.dataset.view); });
 
-  // ---------- Lista de OC ----------
+  // ---------- Facturado vs. a facturar ----------
+  const money = (v) => "$ " + O.fmtMoney(v);
+  const fmtPct = (p) => (Math.abs(p - Math.round(p)) < 0.05 ? String(Math.round(p)) : p.toFixed(1).replace(".", ",")) + "%";
+  const factList = (rec) => ((rec.fact && rec.fact.ids) || []).map((id) => facCache[id]).filter(Boolean);
+  const periodShort = (rec) => D.periodLabel(rec.pmode, rec.pcustom).split(" (")[0];
+  function billing(rec) {
+    const st = parsedPaste(rec), inv = st.inv, total = inv.total || 0, facs = factList(rec), used = facs.filter((f) => f.ok && f.sign !== 0);
+    const fact = F.net(used), tol = 5 + total * 0.0001, hasTotal = inv.lines.length > 0 && total > 0;
+    return { st, total, fact, hasTotal, tol, n: facs.length, unread: facs.filter((f) => !f.ok).length, pct: hasTotal ? fact / total * 100 : null, done: hasTotal && used.length > 0 && Math.abs(total - fact) <= tol };
+  }
+
+  // ---------- Lista de OC (barra lateral) ----------
   function renderList() {
     const list = $("ocList");
     list.innerHTML = "";
-    $("ocEmpty").hidden = ocs.length > 0;
-    ocs.forEach((rec) => {
-      const cl = D.clientById(rec.client), b = document.createElement("div");
-      b.className = "oc-chip" + (rec.id === currentId ? " on" : "");
-      b.innerHTML = '<button type="button" class="oc-open"><strong>OC ' + esc(rec.oc) + '</strong><small>' + (cl ? esc(cl.name) : '<span class="bad-txt">sin cliente</span>') + '</small></button>' +
-        '<button type="button" class="oc-del" title="Eliminar esta OC" aria-label="Eliminar OC ' + esc(rec.oc) + '"><svg class="i"><use href="#i-trash"/></svg></button>';
-      b.querySelector(".oc-open").addEventListener("click", () => { currentId = rec.id; render(); });
-      b.querySelector(".oc-del").addEventListener("click", async () => {
-        if (!(await window.RemitosApp.askConfirm("¿Eliminar la OC " + rec.oc + " y lo que pegaste de entregas?", "Sí, eliminar", "Cancelar"))) return;
-        ocs = ocs.filter((x) => x.id !== rec.id); if (currentId === rec.id) currentId = ocs.length ? ocs[0].id : null; save(); render();
+    const info = ocs.map((rec) => ({ rec, b: billing(rec) }));
+    const visible = info.filter((x) => showDone || !x.b.done || x.rec.id === currentId);
+    const doneN = info.filter((x) => x.b.done).length;
+    visible.forEach(({ rec, b }) => {
+      const cl = D.clientById(rec.client), el = document.createElement("div");
+      el.className = "oc-chip" + (rec.id === currentId ? " on" : "") + (b.done ? " done" : "");
+      const pct = b.pct === null ? "—" : fmtPct(b.pct);
+      el.innerHTML = '<button type="button" class="oc-open"><span class="oc-line"><strong>OC ' + esc(rec.oc) + '</strong><span class="pct' + (b.done ? " ok" : "") + '">' + (b.done ? "✔ 100%" : pct) + '</span></span>' +
+        '<small>' + (cl ? esc(cl.name) : '<span class="bad-txt">sin cliente</span>') + (rec.pmode ? " · " + esc(periodShort(rec)) : "") + '</small>' +
+        '<span class="bar"><i style="width:' + (b.pct === null ? 0 : Math.max(0, Math.min(100, b.pct))) + '%"></i></span></button>' +
+        '<button type="button" class="oc-del" title="Quitar esta OC de la lista" aria-label="Quitar OC ' + esc(rec.oc) + '"><svg class="i"><use href="#i-trash"/></svg></button>';
+      el.querySelector(".oc-open").addEventListener("click", () => { currentId = rec.id; render(); });
+      el.querySelector(".oc-del").addEventListener("click", async () => {
+        if (!(await window.RemitosApp.askConfirm("¿Quitar la OC " + rec.oc + " de la lista? (se pierde lo que pegaste de entregas)", "Sí, quitar", "Cancelar"))) return;
+        ocs = ocs.filter((x) => x.id !== rec.id); if (currentId === rec.id) currentId = null; save(); render();
       });
-      list.appendChild(b);
+      list.appendChild(el);
     });
+    const btn = $("ocShowDone");
+    btn.hidden = doneN === 0;
+    btn.textContent = showDone ? "Ocultar las completas (" + doneN + ")" : "Mostrar las completas (" + doneN + ")";
+    // resumen del mes
+    const withTotal = info.filter((x) => x.b.hasTotal), tot = withTotal.reduce((s, x) => s + x.b.total, 0), fac = withTotal.reduce((s, x) => s + x.b.fact, 0);
+    const box = $("facMonth");
+    box.hidden = !withTotal.length;
+    if (withTotal.length) {
+      const p = tot > 0 ? fac / tot * 100 : 0;
+      box.innerHTML = '<div class="fm-top"><span>Total del mes</span><b>' + fmtPct(p) + '</b></div><div class="progress"><i style="width:' + Math.max(0, Math.min(100, p)) + '%"></i></div>' +
+        '<small>Facturado ' + money(fac) + ' de ' + money(tot) + (info.length - doneN > 0 ? " · " + (info.length - doneN) + " pendiente" + (info.length - doneN === 1 ? "" : "s") : " · todo facturado ✔") + "</small>";
+    }
+    return { info, visible };
+  }
+
+  function renderListSafe() {
+    const r = renderList();
+    if (currentId !== null && !ocs.some((x) => x.id === currentId)) currentId = null;
+    if (currentId === null) { const first = r.visible[0]; if (first) { currentId = first.rec.id; return renderList(); } }
+    return r;
   }
 
   // ---------- Paso 1: productos e IVA ----------
   const RATES = [21, 10.5, 27, 0];
   function renderItems(rec) {
-    $("ocTitle").textContent = "· OC " + rec.oc;
+    $("ocTitle").textContent = rec.oc;
     $("ocMeta").textContent = [rec.emission ? "Emitida el " + rec.emission : "", rec.delivery ? "Entrega: " + rec.delivery : "", rec.pdfName ? "Archivo: " + rec.pdfName : ""].filter(Boolean).join(" · ");
     const body = $("ocItemsTable").querySelector("tbody");
     body.innerHTML = "";
@@ -72,6 +110,9 @@
 
   function renderBadge(rec) {
     const el = $("ocIvaBadge"), chk = O.checkIva(rec.items, rec.totals);
+    $("ocIvaMini").textContent = chk.ok ? "✔ IVA verificado" : "⚠ revisar";
+    $("ocIvaMini").className = "cnt " + (chk.ok ? "ok" : "bad-txt");
+    if (!chk.ok) $("secIva").open = true;
     const parts = chk.rows.map((r) => "IVA " + O.fmtRate(r.rate) + ": $ " + O.fmtMoney(r.pdf));
     if (chk.ok) {
       el.className = "badge good";
@@ -93,7 +134,7 @@
     if (!excel) { if (!rec.auto) rec.auto = null; return; }                     // sin Excel cargado se conserva lo último leído
     if (!cl) { rec.auto = { rows: [], info: "", warnings: [], error: "Elegí el cliente de esta OC." }; return; }
     const r = D.extractTable(excel.wb, cl, range, monthOf(rec));
-    rec.auto = { rows: r.rows, info: r.info, warnings: r.warnings, error: r.error, file: excel.name };
+    rec.auto = { rows: r.rows, info: r.info, warnings: r.warnings, error: r.error, missing: !!r.missing, file: excel.name };
   }
 
   function renderClientBox(rec) {
@@ -106,16 +147,16 @@
     if (rec.pmode === "custom") { if (document.activeElement !== $("ocFrom")) $("ocFrom").value = (rec.pcustom && rec.pcustom.from) || ""; if (document.activeElement !== $("ocTo")) $("ocTo").value = (rec.pcustom && rec.pcustom.to) || ""; }
     const lines = [];
     const cl = D.clientById(rec.client);
-    if (rec.clientHow === "sugerido" && cl) lines.push("Cliente sugerido por el lugar de entrega («" + rec.delivery + "»): confirmalo.");
+    if (rec.clientHow === "sugerido" && cl) lines.push("Cliente y período sugeridos según la OC: confirmalos.");
     else if (rec.clientHow === "recordado" && cl) lines.push("Cliente recordado de una OC anterior con el mismo lugar de entrega.");
     else if (!rec.client && rec.delivery) lines.push("No pude reconocer el cliente por el lugar de entrega («" + rec.delivery + "»): elegilo.");
-    if (rec.pmode && !rec.pmodeUser && rec.deliveryDate) lines.push("Período propuesto según la fecha de entrega de la OC (" + rec.deliveryDate.replace(/-/g, "/") + ").");
     const a = rec.auto;
     if (cl && a) {
       if (a.error) lines.push("⚠ " + a.error);
-      else lines.push("✔ Cantidades leídas del Excel" + (a.file ? " «" + a.file + "»" : "") + ": " + a.info + ".");
+      else lines.push("✔ Cantidades del Excel: " + a.info + ".");
       (a.warnings || []).forEach((w) => lines.push("⚠ " + w));
-    } else if (cl && rec.pmode && !excel) lines.push("Para leer las entregas del Excel de Despachos tocá “Buscar OC del mes” (o pegá la tabla abajo).");
+    } else if (cl && rec.pmode && !excel) lines.push("Para leer las entregas del Excel de Despachos tocá “Buscar OC del mes” (o pegá la tabla en “Entregas y coincidencias”).");
+    if (parsedPaste(rec).source === "oc") lines.push(cl ? "Este cliente no figura en el Excel: se usan las cantidades pedidas en la OC." : "Sin cliente: se usan las cantidades pedidas en la OC. Elegí el cliente para tomar las entregas del Excel.");
     $("ocAutoInfo").innerHTML = lines.map((l) => esc(l)).join("<br>");
   }
 
@@ -143,9 +184,14 @@
       const p = O.parsePasted(rec.paste), matches = O.matchRows(p.rows, rec.items, aliases, rec.map || {});
       return { p, matches, inv: O.buildInvoice(rec.items, p.rows, matches), source: "manual" };
     }
-    const rows = rec.auto && !rec.auto.error ? rec.auto.rows : [];
+    let rows = rec.auto && !rec.auto.error ? rec.auto.rows : [], source = rows.length ? "excel" : "none";
+    // Sin cliente (o el cliente no figura en el Excel): se factura lo pedido en la OC
+    if (!rows.length && (!rec.client || (rec.auto && rec.auto.missing))) {
+      rows = rec.items.filter((it) => it.qty > 0).map((it) => ({ name: it.desc, key: O.keyOf(it.desc), sum: it.qty, invalid: [] }));
+      if (rows.length) source = "oc";
+    }
     const p = { rows, headerSkipped: false, warnings: [] }, matches = O.matchRows(rows, rec.items, aliases, rec.map || {});
-    return { p, matches, inv: O.buildInvoice(rec.items, rows, matches), source: rows.length ? "excel" : "none" };
+    return { p, matches, inv: O.buildInvoice(rec.items, rows, matches), source };
   }
 
   function renderReview(rec, st) {
@@ -155,8 +201,8 @@
     box.hidden = p.rows.length === 0;
     if (!p.rows.length) return;
     const pendingRows = p.rows.filter((r, k) => (matches[k].target === null) && r.sum > 0).length;
-    $("ocReviewSummary").innerHTML = "Coincidencias con la OC · " + p.rows.length + " filas" + (st.source === "excel" ? " (del Excel)" : " (pegadas)") + (pendingRows ? ' · <span class="bad-txt">' + pendingRows + " sin asignar</span>" : " ✔");
-    if (pendingRows) box.open = true;
+    $("ocReviewSummary").innerHTML = "Coincidencias con la OC · " + p.rows.length + " filas" + (st.source === "excel" ? " (del Excel)" : st.source === "oc" ? " (de la OC)" : " (pegadas)") + (pendingRows ? ' · <span class="bad-txt">' + pendingRows + " sin asignar</span>" : " ✔");
+    if (pendingRows) { box.open = true; $("secDel").open = true; }
     p.rows.forEach((r, k) => {
       const m = matches[k], tr = document.createElement("tr");
       tr.className = m.target === null && r.sum > 0 ? "pending" : (r.sum === 0 ? "dim" : "");
@@ -208,24 +254,84 @@
     $("ocInvTotals").innerHTML = inv.lines.length
       ? '<div><span>Subtotal (sin IVA)</span><b>$ ' + O.fmtMoney(inv.subtotal) + "</b></div>" + inv.ivas.map((x) => "<div><span>IVA " + O.fmtRate(x.rate) + "</span><b>$ " + O.fmtMoney(x.amount) + "</b></div>").join("") + '<div class="tot"><span>Total</span><b>$ ' + O.fmtMoney(inv.total) + "</b></div>"
       : "";
-    $("ocOmitted").textContent = inv.omitted.length && st.p.rows.length ? "Productos de la OC sin entregas (no se facturan): " + inv.omitted.join("; ") : "";
+    $("ocOmitted").textContent = inv.omitted.length && st.p.rows.length ? inv.omitted.length + (inv.omitted.length === 1 ? " producto de la OC sin entregas (no se factura)." : " productos de la OC sin entregas (no se facturan).") : "";
+    $("ocOmitted").title = inv.omitted.join("; ");
     $("ocCopyBtn").disabled = !inv.lines.length;
+    $("ocDelMini").textContent = st.source === "excel" ? "del Excel" : st.source === "manual" ? "pegadas" : st.source === "oc" ? "de la OC" : "";
     $("ocPasteInfo").textContent = rec.paste && rec.paste.trim() ? st.p.rows.length + " filas leídas" + (st.p.headerSkipped ? " (se omitió la fila de encabezado)" : "") + " · se usa la tabla pegada en vez del Excel" : "";
+    renderBill(rec); renderFacturas(rec);
     return st;
   }
 
+  // Resumen: a facturar / facturado / falta
+  function renderBill(rec) {
+    const b = billing(rec), box = $("ocBill");
+    if (!b.hasTotal) { box.innerHTML = '<p class="hint">Elegí el cliente y el período para calcular cuánto hay que facturar.</p>'; return; }
+    const falta = O.round(b.total - b.fact, 2), over = -falta > b.tol;
+    const msg = b.done ? '<p class="badge good">✔ Facturación completa: lo facturado coincide con lo entregado.</p>'
+      : over ? '<p class="badge warn">⚠ Se facturó de más: ' + money(-falta) + ".</p>"
+      : b.n === 0 ? "" : "";
+    box.innerHTML = '<div class="stats"><div><span>A facturar</span><b>' + money(b.total) + '</b></div><div><span>Facturado</span><b>' + money(b.fact) + '</b></div><div><span>' + (over ? "Excedente" : "Falta facturar") + '</span><b' + (b.done ? ' class="ok"' : "") + ">" + money(Math.abs(b.done ? 0 : falta)) + '</b></div>' +
+      '<div class="pct-big' + (b.done ? " ok" : "") + '">' + fmtPct(b.pct) + "</div></div>" +
+      '<div class="progress"><i style="width:' + Math.max(0, Math.min(100, b.pct)) + '%"></i></div>' + msg +
+      (b.st.inv.unknownBase > 0 ? '<p class="badge warn">⚠ Hay productos sin IVA definido: el total a facturar no los incluye.</p>' : "") +
+      (b.unread ? '<p class="badge warn">⚠ ' + b.unread + (b.unread === 1 ? " factura no se pudo leer" : " facturas no se pudieron leer") + ": cargá el importe a mano en “Facturas”.</p>" : "");
+  }
+
+  // Facturas encontradas en la carpeta de la OC
+  function renderFacturas(rec) {
+    const box = $("facBody"), facs = factList(rec).slice().sort((a, b) => (a.name > b.name ? 1 : -1));
+    $("facCount").textContent = rec.fact ? (facs.length ? facs.length + (facs.length === 1 ? " encontrada" : " encontradas") : "ninguna") : "";
+    if (!rec.fact) { box.innerHTML = '<p class="hint">Todavía no se buscaron las facturas de esta OC. Tocá “Actualizar facturas”.</p>'; return; }
+    if (rec.fact.error) { box.innerHTML = '<p class="badge warn">⚠ ' + esc(rec.fact.error) + "</p>"; return; }
+    if (!rec.fact.carpeta) { box.innerHTML = '<p class="hint">No encontré la carpeta <b>OC-' + esc(rec.oc) + "</b> en tu Drive (se crea al guardar los remitos desde la sección Remitos).</p>"; return; }
+    if (!facs.length) { box.innerHTML = '<p class="hint">La carpeta <b>OC-' + esc(rec.oc) + "</b> todavía no tiene facturas." + (rec.fact.otros ? " Hay " + rec.fact.otros + " archivo" + (rec.fact.otros === 1 ? "" : "s") + " más (remitos)." : "") + "</p>"; return; }
+    box.innerHTML = "";
+    facs.forEach((f) => {
+      const row = document.createElement("div"); row.className = "fac-row" + (f.ok ? "" : " bad");
+      const sign = f.sign < 0 ? "−" : f.sign > 0 ? "+" : "";
+      const amount = f.ok ? '<span class="amt ' + (f.sign < 0 ? "neg" : "pos") + '">' + sign + " " + money(f.total) + "</span>" : "";
+      row.innerHTML = '<div class="fac-name"><strong>' + esc(f.label) + "</strong><small>N.º " + esc(f.short) + (f.date ? " · " + esc(f.date) : "") + (f.manual ? " · importe cargado a mano" : "") + '</small></div><div class="fac-amt">' + amount + "</div>";
+      const cell = row.querySelector(".fac-amt");
+      if (!f.known) { cell.innerHTML = '<small class="bad-txt">Tipo desconocido: no se suma</small>'; }
+      else if (!f.ok || editing[f.id]) {
+        const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.className = "fac-input"; inp.placeholder = "Importe total";
+        inp.setAttribute("aria-label", "Importe total de la factura " + f.short);
+        if (f.ok) inp.value = O.fmtMoney(f.total);
+        inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); });
+        inp.addEventListener("change", () => {
+          const v = O.parseNumber(inp.value);
+          if (v === null || Number.isNaN(v) || v < 0) return;
+          Object.assign(facCache[f.id], { total: O.round(v, 2), ok: true, manual: true }); delete editing[f.id]; save(); render();
+        });
+        cell.innerHTML = ""; if (!f.ok) { const t = document.createElement("small"); t.className = "bad-txt"; t.textContent = f.error || "No se pudo leer"; cell.appendChild(t); }
+        cell.appendChild(inp);
+      } else {
+        const b = document.createElement("button"); b.type = "button"; b.className = "link-btn tiny"; b.textContent = "corregir";
+        b.addEventListener("click", () => { editing[f.id] = true; renderFacturas(rec); });
+        cell.appendChild(b);
+      }
+      box.appendChild(row);
+    });
+    if (rec.fact.at) { const p = document.createElement("p"); p.className = "hint small-note"; p.textContent = "Carpeta revisada " + new Date(rec.fact.at).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) + "."; box.appendChild(p); }
+  }
+
   function render() {
-    if (currentId === null && ocs.length) currentId = ocs[0].id;
-    renderList();
+    const { visible } = renderListSafe();
     const ex = $("ocExcelInfo");
-    ex.hidden = !excel;
-    if (excel) ex.textContent = "Excel de Despachos cargado: " + excel.name + " · hojas: " + excel.wb.sheets.filter((s) => !s.hidden).map((s) => s.name).join(", ");
+    ex.textContent = excel ? "Excel de Despachos: " + excel.name : "Buscá las órdenes de compra del mes y controlá cuánto falta facturar de cada una.";
     const rec = cur();
     $("ocDetail").hidden = !rec;
-    if (!rec) return;
+    $("ocEmpty").hidden = !!rec;
+    if (!rec) {
+      $("ocEmptyText").textContent = !ocs.length ? "Todavía no cargaste ninguna OC." : visible.length ? "Elegí una OC de la lista." : "¡Todo facturado! No quedan OC pendientes.";
+      $("ocEmptySub").textContent = !ocs.length ? "Tocá “Buscar OC del mes” o “Agregar OC”." : visible.length ? "Vas a ver cuánto falta facturar y las facturas de cada una." : "Las OC completas están ocultas: podés mostrarlas con el botón de la lista.";
+      return;
+    }
     renderItems(rec);
     renderClientBox(rec);
     if ($("ocPaste").value !== (rec.paste || "")) $("ocPaste").value = rec.paste || "";
+    if (rec.paste && rec.paste.trim()) $("secDel").open = true;
     const st = renderInvoice(rec);
     renderReview(rec, st);
   }
@@ -239,6 +345,7 @@
     pasteTimer = setTimeout(() => { save(); const st = renderInvoice(rec); renderReview(rec, st); }, 200);
   });
   $("ocPasteClear").addEventListener("click", () => { const rec = cur(); if (!rec) return; rec.paste = ""; rec.map = {}; $("ocPaste").value = ""; save(); render(); });
+  $("ocShowDone").addEventListener("click", () => { showDone = !showDone; save(); render(); });
 
   $("ocCopyBtn").addEventListener("click", async () => {
     const txt = O.toTsv(lastLines), btn = $("ocCopyBtn"), old = btn.innerHTML;
@@ -284,7 +391,7 @@
     let out; try { out = await res.json(); } catch (e) { throw new Error("El puente no respondió como se esperaba. Revisá que esté implementado con acceso “Cualquier persona”."); }
     if (!out.ok) {
       if (out.error === "Clave incorrecta") throw new Error("La clave del puente no coincide (revisá Ajustes).");
-      if (/OC inválida|Nombre de archivo inválido|Fecha inválida/.test(out.error || "")) throw new Error("El puente es de una versión anterior. Actualizalo con el código nuevo (ver INSTRUCCIONES-PUENTE.txt, “Actualizar el puente a la versión 2”).");
+      if (/OC inválida|Nombre de archivo inválido|Fecha inválida/.test(out.error || "")) throw new Error("El puente es de una versión anterior. Actualizalo con el código nuevo (ver INSTRUCCIONES-PUENTE.txt, “Actualizar el puente a la versión 4”).");
       throw new Error(out.error || "El puente informó un error.");
     }
     return out;
@@ -356,8 +463,9 @@
       const fresh = found.map((x) => buildRecord(x.oc, x.num, x.name, ocs.find((o) => o.oc === x.num)));
       ocs = fresh.concat(keep);
       if (excel) fresh.forEach(recomputeAuto);
-      currentId = fresh.length ? fresh[0].id : currentId;
+      lastMes = mes; currentId = null;
       save(); render();
+      try { await loadFacturas(fresh, (t) => say(t)); } catch (e) { say("Facturas: " + e.message, "bad-line"); }
       const noClient = fresh.filter((r) => !r.client).length;
       say("Listo: " + fresh.length + " OC cargadas." + (noClient ? " " + noClient + " sin cliente reconocido: elegilo en cada una." : " Todas con cliente sugerido: revisalos."), "ok-line");
       problems.forEach((p) => say(p, "bad-line"));
@@ -366,6 +474,59 @@
       say(err.message || "No se pudo completar la búsqueda.", "bad-line");
     } finally { searching = false; mGo.disabled = false; }
   }
+
+
+  // ---------- Facturas de cada OC (carpeta OC-<número> en Mi unidad) ----------
+  let facBusy = false;
+  function setStatus(text, cls) { const el = $("facStatus"); el.hidden = !text; el.textContent = text || ""; el.className = "hint fac-status " + (cls || ""); }
+  async function ingestFactura(f, meta) {
+    const info = F.parseName(f.name || meta.name); if (!info) return;
+    const prev = facCache[f.id] || {};
+    const base = { id: f.id, name: f.name || meta.name, updated: meta.updated, label: info.label, sign: info.sign, known: info.known, short: info.short, code: info.code, total: null, ok: false, manual: false, date: "", error: "" };
+    if (f.error) { base.error = "No se pudo bajar: " + f.error; facCache[f.id] = base; return; }
+    try {
+      const ex = await window.PdfText.extract(b64ToBuf(f.b64));
+      if (!ex.hasText) base.error = "El PDF no trae texto (parece una foto). Cargá el importe a mano.";
+      else {
+        const r = F.parseInvoice(ex.pages);
+        if (r.ok) { base.total = r.total; base.ok = true; base.date = r.date; } else base.error = "No encontré el importe total. Cargalo a mano.";
+      }
+    } catch (e) { base.error = "No se pudo leer el PDF (" + e.message + "). Cargá el importe a mano."; }
+    facCache[f.id] = base;
+  }
+  async function loadFacturas(list, say) {
+    if (facBusy || !list.length) return;
+    facBusy = true; $("facRefresh").disabled = true;
+    const log = say || ((t) => setStatus(t));
+    let nuevas = 0, errores = 0;
+    try {
+      for (let i = 0; i < list.length; i += 6) {
+        const chunk = list.slice(i, i + 6);
+        log("Buscando facturas (OC " + chunk.map((r) => r.oc).join(", ") + ")…");
+        const out = await bridge({ action: "facturas", ocs: chunk.map((r) => r.oc), mes: lastMes || "" });
+        const need = [];
+        for (const rec of chunk) {
+          const info = (out.resultados || {})[rec.oc] || { carpeta: false, archivos: [] };
+          if (info.error) { rec.fact = { error: "Drive respondió: " + info.error, at: Date.now(), ids: [] }; errores++; continue; }
+          rec.fact = { at: Date.now(), carpeta: !!info.carpeta, ruta: info.ruta || "", otros: info.otros || 0, ids: info.archivos.map((a) => a.id) };
+          info.archivos.forEach((a) => { const c = facCache[a.id]; if (!c || c.updated !== a.updated) need.push(a); });
+        }
+        for (let k = 0; k < need.length; k += 6) {
+          const part = need.slice(k, k + 6);
+          log("Leyendo facturas " + (k + 1) + " a " + (k + part.length) + " de " + need.length + "…");
+          const r = await bridge({ action: "files", ids: part.map((a) => a.id) });
+          for (const f of r.archivos) { await ingestFactura(f, part.find((a) => a.id === f.id) || {}); nuevas++; }
+        }
+        save(); render();
+      }
+      const total = list.reduce((s, r) => s + ((r.fact && r.fact.ids) || []).length, 0);
+      log(total + (total === 1 ? " factura encontrada" : " facturas encontradas") + " en " + list.length + (list.length === 1 ? " OC." : " OC.") + (errores ? " (" + errores + " con error)" : ""));
+    } finally { facBusy = false; $("facRefresh").disabled = false; }
+  }
+  $("facRefresh").addEventListener("click", async () => {
+    if (!ocs.length) { setStatus("Primero cargá las OC (Buscar OC del mes o Agregar OC)."); return; }
+    try { await loadFacturas(ocs); } catch (e) { setStatus(e.message || "No se pudieron buscar las facturas.", "bad-txt"); }
+  });
 
   // ---------- Agregar una OC a mano ----------
   const dlg = $("ocAddDialog"), numIn = $("ocAddNumber"), drop = $("ocDrop"), fileIn = $("ocFile"), addMsg = $("ocAddMsg");
@@ -426,5 +587,5 @@
   }
 
   load();
-  if (ocs.length) currentId = ocs[0].id;
+  currentId = null;
 })();

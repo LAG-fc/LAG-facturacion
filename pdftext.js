@@ -58,6 +58,23 @@
     return pages;
   }
 
+  // ASCII85 (algunos generadores, como reportlab, lo usan antes de Flate)
+  function ascii85(d) {
+    const out = []; let g = [], i = 0;
+    let str = ""; for (let k = 0; k < d.length; k++) str += String.fromCharCode(d[k]);
+    str = str.replace(/^\s*<~/, "");
+    for (i = 0; i < str.length; i++) {
+      const ch = str[i];
+      if (ch === "~") break;
+      if (/\s/.test(ch)) continue;
+      if (ch === "z" && !g.length) { out.push(0, 0, 0, 0); continue; }
+      g.push(ch.charCodeAt(0) - 33);
+      if (g.length === 5) { let v = 0; for (const x of g) v = v * 85 + x; out.push((v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255); g = []; }
+    }
+    if (g.length > 1) { const n = g.length; while (g.length < 5) g.push(84); let v = 0; for (const x of g) v = v * 85 + x; const b = [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]; out.push(...b.slice(0, n - 1)); }
+    return new Uint8Array(out);
+  }
+
   async function streamOf(objs, bytes, n) {
     const o = objs.get(n);
     if (!o || o.ds === undefined) return "";
@@ -67,8 +84,11 @@
     if (data.length && data[data.length - 1] === 13) data = data.subarray(0, data.length - 1);
     const f = /\/Filter\s*(\[[^\]]*\]|\/\w+)/.exec(o.dict);
     if (f) {
-      if (/FlateDecode|\/Fl\b/.test(f[1]) && !/DCT|LZW|ASCII85|RunLength|CCITT|JBIG|JPX/.test(f[1])) data = await inflate(data);
-      else return "";                                                  // filtro no soportado
+      const a85 = /ASCII85Decode|\/A85\b/.test(f[1]);
+      if (/FlateDecode|\/Fl\b/.test(f[1]) && !/DCT|LZW|RunLength|CCITT|JBIG|JPX/.test(f[1])) {
+        if (a85) data = ascii85(data);
+        data = await inflate(data);
+      } else return "";                                                // filtro no soportado
     }
     let s = ""; for (let i = 0; i < data.length; i += 8192) s += String.fromCharCode.apply(null, data.subarray(i, i + 8192));
     return s;

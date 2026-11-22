@@ -44,8 +44,15 @@
     if (mode === "q1") return { from: 1, to: 15 };
     if (mode === "q2") return { from: 16, to: 31 };
     if (mode === "mes") return { from: 1, to: 31 };
+    const w = /^w([1-5])$/.exec(mode || ""); if (w) { const f = (Number(w[1]) - 1) * 7 + 1; return { from: f, to: w[1] === "5" ? 31 : f + 6 }; }
     if (mode === "custom" && custom && custom.from && custom.to) return { from: Number(custom.from), to: Number(custom.to) };
     return null;
+  }
+
+  const PERIODS = { q1: "1ª quincena (1 al 15)", q2: "2ª quincena (16 al fin)", mes: "Mes completo", w1: "Semana 1 (1 al 7)", w2: "Semana 2 (8 al 14)", w3: "Semana 3 (15 al 21)", w4: "Semana 4 (22 al 28)", w5: "Semana 5 (29 al fin)" };
+  function periodLabel(mode, custom) {
+    if (mode === "custom") return custom && custom.from && custom.to ? "Días " + custom.from + " al " + custom.to : "Días a elegir";
+    return PERIODS[mode] || "";
   }
 
   function findSheet(wb, name) {
@@ -72,20 +79,44 @@
   const txt = (c) => (typeof c === "string" ? c.trim() : "");
   const num = (c) => { if (typeof c === "number") return c; if (typeof c === "string") { const v = O.parseNumber(c); return v === null || Number.isNaN(v) ? null : v; } return null; };
 
-  // Hoja con una fila por producto y una columna por día. Los encabezados «total quincena» (col. Q y AG) separan las dos quincenas.
-  function extractGrid(sheet, range, out) {
-    const rows = sheet.rows; let hdr = -1, tcols = [];
-    for (let r = 0; r < Math.min(rows.length, 80) && hdr < 0; r++) {
-      const t = []; (rows[r] || []).forEach((c, k) => { if (/^TOTAL\s+QUINCENA/.test(norm(txt(c)))) t.push(k); });
-      if (t.length >= 2) { hdr = r; tcols = t; }
+  // Fecha de una celda de encabezado: fecha real, texto "dd-mm", número de día (1-31) o número de serie de Excel
+  function headDay(c) {
+    const dd = dayOf(c); if (dd) return dd;
+    if (typeof c === "number") {
+      if (Number.isInteger(c) && c >= 1 && c <= 31) return { d: c, m: null };
+      if (c > 40000 && c < 80000) { const t = new Date(Date.UTC(1899, 11, 30) + Math.round(c) * 864e5); return { d: t.getUTCDate(), m: t.getUTCMonth() + 1 }; }
     }
-    if (hdr < 0) { out.error = "En la hoja " + sheet.name + " no encontré los encabezados «total quincena»."; return; }
-    const cols = []; let segStart = 1;
-    tcols.forEach((tc, si) => {
-      for (let k = segStart; k < tc; k++) { const day = si * 15 + (k - segStart) + 1; if (day >= range.from && day <= range.to) cols.push(k); }
-      segStart = tc + 1;
-    });
-    if (!cols.length) { out.error = "En la hoja " + sheet.name + " no hay columnas entre el día " + range.from + " y el " + range.to + "."; return; }
+    return null;
+  }
+
+  // Hoja con una fila por producto y una columna por día. Se suman las columnas de los días del período para cada producto.
+  // 1º: las fechas de la fila de encabezado. 2º (si no hay fechas): los encabezados «total quincena» que separan las dos quincenas.
+  function extractGrid(sheet, range, month, out) {
+    const rows = sheet.rows; let hdr = -1, best = 0;
+    for (let r = 0; r < Math.min(rows.length, 80); r++) {
+      let n = 0; const seen = []; (rows[r] || []).forEach((c, k) => { if (k > 0 && headDay(c)) { n++; seen.push(headDay(c).d); } });
+      const inc = seen.filter((d, i) => i > 0 && d > seen[i - 1]).length;                 // una fila de fechas va creciendo: 1, 2, 3…
+      if (n > best && n >= 5 && seen.some((d) => d > 15) && inc >= (n - 1) * 0.8) { best = n; hdr = r; }
+    }
+    let cols = [], how = "";
+    if (hdr >= 0) {
+      (rows[hdr] || []).forEach((c, k) => {
+        if (k === 0) return; const dd = headDay(c); if (!dd) return;
+        if (dd.d >= range.from && dd.d <= range.to && (!month || !dd.m || dd.m === month)) cols.push(k);
+      });
+      how = "por las fechas de la fila " + (hdr + 1);
+    } else {
+      let t = [];
+      for (let r = 0; r < Math.min(rows.length, 80) && hdr < 0; r++) {
+        const tc = []; (rows[r] || []).forEach((c, k) => { if (/^TOTAL\s+QUINCENA/.test(norm(txt(c)))) tc.push(k); });
+        if (tc.length >= 2) { hdr = r; t = tc; }
+      }
+      if (hdr < 0) { out.error = "En la hoja " + sheet.name + " no encontré la fila de fechas (ni los encabezados «total quincena»)."; return; }
+      let segStart = 1;
+      t.forEach((tc, si) => { for (let k = segStart; k < tc; k++) { const day = si * 15 + (k - segStart) + 1; if (day >= range.from && day <= range.to) cols.push(k); } segStart = tc + 1; });
+      how = "por los encabezados «total quincena»";
+    }
+    if (!cols.length) { out.error = "En la hoja " + sheet.name + " no hay columnas entre el día " + range.from + " y el " + range.to + (month ? " del mes " + month : "") + "."; return; }
     for (let r = hdr + 1; r < rows.length; r++) {
       const row = rows[r] || [], name = txt(row[0]);
       if (!name) { if (out.rows.length) break; continue; }                                  // la tabla termina en la primera fila sin nombre
@@ -94,7 +125,7 @@
       for (const k of cols) { const c = row[k]; if (c === null || c === undefined || c === "") continue; const v = num(c); if (v === null) { if (typeof c === "string") invalid.push(c); } else sum += v; }
       out.rows.push({ line: r + 1, name, key: O.keyOf(name), sum: O.round(sum, 3), invalid });
     }
-    out.info = "Hoja “" + sheet.name + "”, días " + range.from + " al " + Math.min(range.to, tcols.length * 15) + " (" + cols.length + " columnas)";
+    out.info = "Hoja “" + sheet.name + "”, suma de " + cols.length + " columnas (días " + range.from + " al " + Math.min(range.to, 31) + ", " + how + ")";
     if (!out.rows.length) out.warnings.push("No encontré productos debajo del encabezado.");
   }
 
@@ -118,7 +149,7 @@
       e.sum += q; map.set(name, e);
     }
     map.forEach((e) => { e.sum = O.round(e.sum, 3); out.rows.push(e); });
-    if (!seen) { out.error = "En la hoja " + sheet.name + " no encontré entregas de " + client.name + "."; return; }
+    if (!seen) { out.error = "En la hoja " + sheet.name + " no encontré entregas de " + client.name + "."; out.missing = true; return; }
     out.info = "Hoja “" + sheet.name + "”, días " + range.from + " al " + Math.min(range.to, 31);
     const odd = out.rows.filter((e) => !/PAN MIGNON BLANCO/.test(norm(e.name)));
     if (odd.length) out.warnings.push("Ojo: " + client.name + " normalmente lleva solo " + PAN + ", pero ese período trae también: " + odd.map((e) => e.name).join(", ") + ".");
@@ -138,10 +169,10 @@
     const out = { rows: [], warnings: [], info: "", error: "" };
     if (!range) { out.error = "Elegí el período (quincena, mes o días)."; return out; }
     const s = sheetsFor(wb, client);
-    if (s.error) { out.error = s.error; return out; }
+    if (s.error) { out.error = s.error; out.missing = true; return out; }
     if (client.kind === "tabla") {
       if (!s.dataSheet) { out.error = "No hay ninguna hoja antes de “" + s.idSheet.name + "”."; return out; }
-      extractGrid(s.dataSheet, range, out);
+      extractGrid(s.dataSheet, range, month, out);
     } else {
       extractList(s.idSheet, client, range, month, out);
       if (!out.error) crossCheckMerlo(s.dataSheet, client, range, out);
@@ -149,6 +180,6 @@
     return out;
   }
 
-  const api = { CLIENTS, clientById, suggestClient, defaultPeriodMode, periodRange, findSheet, sheetsFor, extractTable, norm };
+  const api = { CLIENTS, clientById, suggestClient, defaultPeriodMode, periodRange, findSheet, sheetsFor, extractTable, periodLabel, norm };
   if (typeof module === "object" && module.exports) module.exports = api; else root.Despachos = api;
 })(typeof self !== "undefined" ? self : this);
