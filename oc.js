@@ -12,7 +12,7 @@
   let facCache = {}, showDone = false, lastMes = "", editing = {};   // facCache: facturas ya leídas (por id de archivo de Drive)
   let excel = null;                                   // Excel de Despachos leído (solo en memoria): {name, wb, loadedAt}
   const jget = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v === null ? d : v; } catch (e) { return d; } };
-  const load = () => { ocs = jget("ocData", []); if (!Array.isArray(ocs)) ocs = []; aliases = jget("ocAliases", {}) || {}; clientAliases = jget("ocClientAliases", {}) || {}; facCache = jget("facCache", {}) || {}; showDone = !!jget("facShowDone", false); lastMes = jget("facLastMes", "") || ""; };
+  const load = () => { ocs = jget("ocData", []); if (!Array.isArray(ocs)) ocs = []; aliases = jget("ocAliases", {}) || {}; clientAliases = jget("ocClientAliases", {}) || {}; facCache = jget("facCache", {}) || {}; Object.keys(facCache).forEach((k) => { if (!facCache[k] || (!facCache[k].ok && !facCache[k].manual)) delete facCache[k]; }); showDone = !!jget("facShowDone", false); lastMes = jget("facLastMes", "") || ""; };
   const save = () => { try { localStorage.setItem("ocData", JSON.stringify(ocs)); localStorage.setItem("ocAliases", JSON.stringify(aliases)); localStorage.setItem("ocClientAliases", JSON.stringify(clientAliases)); localStorage.setItem("facCache", JSON.stringify(facCache)); localStorage.setItem("facShowDone", JSON.stringify(showDone)); localStorage.setItem("facLastMes", JSON.stringify(lastMes)); } catch (e) { /* nada */ } };
   const cur = () => ocs.find((x) => x.id === currentId) || null;
 
@@ -359,6 +359,12 @@
     pasteTimer = setTimeout(() => { save(); const st = renderInvoice(rec); renderReview(rec, st); }, 200);
   });
   $("ocPasteClear").addEventListener("click", () => { const rec = cur(); if (!rec) return; rec.paste = ""; rec.map = {}; $("ocPaste").value = ""; save(); render(); });
+  $("facClear").addEventListener("click", async () => {
+    if (!(await window.RemitosApp.askConfirm("¿Borrar todos los datos guardados de Facturación (OC, facturas leídas y lo que pegaste)? Después volvés a tocar “Buscar OC del mes”.", "Sí, borrar todo", "Cancelar"))) return;
+    ocs = []; facCache = {}; aliases = {}; clientAliases = {}; excel = null; currentId = null; editing = {};
+    ["ocData", "facCache", "ocAliases", "ocClientAliases"].forEach((k) => { try { localStorage.removeItem(k); } catch (e) { /* nada */ } });
+    setStatus("Datos de Facturación borrados."); save(); render();
+  });
   $("ocShowDone").addEventListener("click", () => { showDone = !showDone; save(); render(); });
 
   $("ocCopyBtn").addEventListener("click", async () => {
@@ -495,11 +501,12 @@
 
   // ---------- Facturas de cada OC (carpeta OC-<número> en Mi unidad) ----------
   let facBusy = false;
+  const CACHE_V = "7.4";
   function setStatus(text, cls) { const el = $("facStatus"); el.hidden = !text; el.textContent = text || ""; el.className = "hint fac-status " + (cls || ""); }
   async function ingestFactura(f, meta) {
     const info = F.parseName(f.name || meta.name); if (!info) return;
     const prev = facCache[f.id] || {};
-    const base = { id: f.id, name: f.name || meta.name, updated: meta.updated, label: info.label, sign: info.sign, known: info.known, short: info.short, code: info.code, total: null, ok: false, manual: false, date: "", error: "" };
+    const base = { v: CACHE_V, id: f.id, name: f.name || meta.name, updated: meta.updated, label: info.label, sign: info.sign, known: info.known, short: info.short, code: info.code, total: null, ok: false, manual: false, date: "", error: "" };
     if (f.error) { base.error = "No se pudo bajar: " + f.error; facCache[f.id] = base; return; }
     try {
       const ex = await window.PdfText.extract(b64ToBuf(f.b64));
@@ -526,7 +533,7 @@
           const info = (out.resultados || {})[rec.oc] || { carpeta: false, archivos: [] };
           if (info.error) { rec.fact = { error: "Drive respondió: " + info.error, at: Date.now(), ids: [] }; errores++; continue; }
           rec.fact = { at: Date.now(), carpeta: !!info.carpeta, ruta: info.ruta || "", otros: info.otros || 0, ids: info.archivos.map((a) => a.id) };
-          info.archivos.forEach((a) => { const c = facCache[a.id]; if (!c || c.updated !== a.updated) need.push(a); });
+          info.archivos.forEach((a) => { const c = facCache[a.id]; if (!c || c.updated !== a.updated || c.v !== CACHE_V || (!c.ok && !c.manual)) need.push(a); });   // los fallos nunca se guardan: se reintentan siempre
         }
         for (let k = 0; k < need.length; k += 6) {
           const part = need.slice(k, k + 6);

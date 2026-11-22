@@ -107,3 +107,7 @@ NOVEDAD v7.3
 - Actualización más fiable: la aplicación ahora baja siempre los archivos nuevos (evita copias viejas).
 - Si una factura no se puede leer, el mensaje indica la versión del lector. IMPORTANTE: subir TODOS los archivos de la carpeta
   escaner-remitos-web (especialmente pdftext.js y pdfcrypt.js) reemplazando los anteriores.
+
+NOVEDAD v7.4
+- Las facturas que no se pudieron leer ya NO quedan guardadas: se vuelven a intentar cada vez (antes un error viejo quedaba pegado).
+- Botón "Borrar datos guardados" al pie de la lista de OC: elimina OC, facturas leídas y lo pegado.
