@@ -99,3 +99,11 @@ NOVEDAD v7.2
 - Nueva opción de cliente "Otro" (usa las cantidades pedidas en la OC).
 - El recuadro de "Buscar OC del mes" se cierra solo al terminar; el resultado queda en una línea de estado.
 - Tipografía de los títulos de OC y porcentajes cambiada a la misma letra de la página (sin serif).
+
+NOVEDAD v7.3
+- Excel: si la hoja anterior a CC/CS está vacía (como en octubre), se lee la lista diaria de la hoja del cliente. Ya no depende del orden de las hojas.
+- Cliente "Otro": si el Excel trae hojas de clientes que no se repiten (Vuce, Virrey del Pino…), se puede elegir la hoja a mano.
+- Se quitó el control contra el total de la hoja de Merlo (en octubre no coincidía aunque los días sí).
+- Actualización más fiable: la aplicación ahora baja siempre los archivos nuevos (evita copias viejas).
+- Si una factura no se puede leer, el mensaje indica la versión del lector. IMPORTANTE: subir TODOS los archivos de la carpeta
+  escaner-remitos-web (especialmente pdftext.js y pdfcrypt.js) reemplazando los anteriores.

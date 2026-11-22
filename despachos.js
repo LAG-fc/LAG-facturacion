@@ -152,18 +152,25 @@
     map.forEach((e) => { e.sum = O.round(e.sum, 3); out.rows.push(e); });
     if (!seen) { out.error = "En la hoja " + sheet.name + " no encontré entregas de " + client.name + "."; out.missing = true; return; }
     out.info = "Hoja “" + sheet.name + "”, días " + range.from + " al " + Math.min(range.to, 31);
-    const odd = out.rows.filter((e) => !/PAN MIGNON BLANCO/.test(norm(e.name)));
+    const odd = client.kind === "pan" ? out.rows.filter((e) => !/PAN MIGNON BLANCO/.test(norm(e.name))) : [];
     if (odd.length) out.warnings.push("Ojo: " + client.name + " normalmente lleva solo " + PAN + ", pero ese período trae también: " + odd.map((e) => e.name).join(", ") + ".");
     if (!out.rows.length) out.warnings.push("No hay entregas de " + client.name + " entre el día " + range.from + " y el " + range.to + ".");
   }
 
-  // Control cruzado con la hoja anterior (solo trae el total del mes de Alcaidía / UP 59 / UP 60 en la columna AG, filas 5, 6 y 7)
-  function crossCheckMerlo(dataSheet, client, range, out) {
-    if (!dataSheet || client.mrow === undefined || range.from > 1 || range.to < 30) return;
-    const vals = [];
-    (dataSheet.rows || []).forEach((row, r) => { const v = num((row || [])[32]); if (v !== null && v > 0) vals.push(v); });
-    const mine = vals[client.mrow], total = out.rows.reduce((s, e) => s + e.sum, 0);
-    if (mine !== undefined && Math.abs(mine - total) > 0.05) out.warnings.push("La hoja " + dataSheet.name + " indica " + O.fmtQty(mine) + " para el mes y la lista diaria suma " + O.fmtQty(O.round(total, 3)) + ": revisá.");
+  // Hojas con la lista diaria (Fecha de entrega | Ingrediente | Cant.) que no pertenecen a ninguno de los clientes fijos: sirven para el cliente "Otro"
+  function otherSheets(wb) {
+    const fixed = CLIENTS.filter((c) => c.sheet).map((c) => norm(c.sheet));
+    return wb.sheets.filter((s) => !s.hidden && !fixed.includes(norm(s.name)) && (s.rows || []).slice(0, 5).some((r) => {
+      const n = (r || []).map((c) => norm(txt(c))); return n.some((x) => /^FECHA/.test(x)) && n.some((x) => /^INGREDIENTE|^PRODUCTO/.test(x)) && n.some((x) => /^CANT/.test(x));
+    }));
+  }
+  function extractOther(wb, sheetName, range, month) {
+    const out = { rows: [], warnings: [], info: "", error: "" };
+    if (!range) { out.error = "Elegí el período (quincena, mes o días)."; return out; }
+    const sh = wb.sheets.find((s) => s.name === sheetName && !s.hidden);
+    if (!sh) { out.error = "No encontré la hoja “" + sheetName + "” en el Excel."; out.missing = true; return out; }
+    extractList(sh, { name: sheetName }, range, month, out);
+    return out;
   }
 
   function extractTable(wb, client, range, month) {
@@ -173,15 +180,18 @@
     const s = sheetsFor(wb, client);
     if (s.error) { out.error = s.error; out.missing = true; return out; }
     if (client.kind === "tabla") {
-      if (!s.dataSheet) { out.error = "No hay ninguna hoja antes de “" + s.idSheet.name + "”."; return out; }
-      extractGrid(s.dataSheet, range, month, out);
+      if (s.dataSheet) extractGrid(s.dataSheet, range, month, out);
+      if (!s.dataSheet || out.error || !out.rows.length) {                  // hoja anterior vacía o sin tabla (pasa en algunos meses): se usa la lista diaria
+        const prev = { rows: [], warnings: [], info: "", error: "" };
+        extractList(s.idSheet, { name: client.name }, range, month, prev);
+        if (!prev.error) { Object.assign(out, prev); out.error = ""; }
+      }
     } else {
       extractList(s.idSheet, client, range, month, out);
-      if (!out.error) crossCheckMerlo(s.dataSheet, client, range, out);
     }
     return out;
   }
 
-  const api = { CLIENTS, clientById, suggestClient, defaultPeriodMode, periodRange, findSheet, sheetsFor, extractTable, periodLabel, norm };
+  const api = { CLIENTS, clientById, suggestClient, defaultPeriodMode, periodRange, findSheet, sheetsFor, extractTable, periodLabel, otherSheets, extractOther, norm };
   if (typeof module === "object" && module.exports) module.exports = api; else root.Despachos = api;
 })(typeof self !== "undefined" ? self : this);

@@ -44,7 +44,7 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg>Instalar</button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v7.2</span>
+      <span class="ver" id="verTag">v7.3</span>
     </div>
   </header>
 
@@ -168,6 +168,9 @@
                     <option value="w5">Semana 5 (29 al fin)</option>
                     <option value="custom">Otros días…</option>
                   </select>
+                </label>
+                <label class="field-inline" id="ocOtherWrap" hidden>Hoja del Excel
+                  <select id="ocOtherSheet"></select>
                 </label>
                 <span id="ocCustom" class="custom-days" hidden>
                   <label class="field-inline">Desde<input id="ocFrom" type="text" inputmode="numeric" maxlength="2"></label>
@@ -336,7 +339,7 @@
       <p class="hint">Con el puente configurado, “Guardar PDF” lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto; ya no se descarga en el dispositivo. Sin puente, el PDF se descarga como antes.</p>
     </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">7.2</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">7.3</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>

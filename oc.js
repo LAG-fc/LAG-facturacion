@@ -131,7 +131,10 @@
   // Calcula (si se puede) la tabla de entregas desde el Excel de Despachos
   function recomputeAuto(rec) {
     const cl = D.clientById(rec.client), range = D.periodRange(rec.pmode, rec.pcustom);
-    if (cl && cl.kind === "oc") { rec.auto = { rows: [], info: "", warnings: [], error: "", missing: true, file: excel ? excel.name : "" }; return; }
+    if (cl && cl.kind === "oc") {
+      if (excel && rec.otherSheet) { const r = D.extractOther(excel.wb, rec.otherSheet, range, monthOf(rec)); rec.auto = { rows: r.rows, info: r.info, warnings: r.warnings, error: r.error, missing: !!r.missing, file: excel.name }; return; }
+      rec.auto = { rows: [], info: "", warnings: [], error: "", missing: true, file: excel ? excel.name : "" }; return;
+    }
     if (!excel) { if (!rec.auto) rec.auto = null; return; }                     // sin Excel cargado se conserva lo último leído
     if (!cl) { rec.auto = { rows: [], info: "", warnings: [], error: "Elegí el cliente de esta OC." }; return; }
     if (cl.kind === "oc") { rec.auto = { rows: [], info: "", warnings: [], error: "", missing: true, file: excel.name }; return; }
@@ -143,6 +146,9 @@
     const sel = $("ocClient");
     sel.innerHTML = '<option value="">— elegir —</option>' + D.CLIENTS.map((c) => '<option value="' + c.id + '"' + (rec.client === c.id ? " selected" : "") + ">" + esc(c.name) + "</option>").join("");
     sel.classList.toggle("bad", !rec.client);
+    const ow = $("ocOtherWrap"), os = $("ocOtherSheet"), others = excel ? D.otherSheets(excel.wb) : [];
+    ow.hidden = !(rec.client === "otro" && others.length);
+    os.innerHTML = '<option value="">— usar lo pedido en la OC —</option>' + others.map((s) => '<option value="' + esc(s.name) + '"' + (rec.otherSheet === s.name ? " selected" : "") + ">" + esc(s.name) + "</option>").join("");
     $("ocPeriod").value = rec.pmode || "";
     $("ocPeriod").classList.toggle("bad", !rec.pmode);
     $("ocCustom").hidden = rec.pmode !== "custom";
@@ -153,13 +159,14 @@
     else if (rec.clientHow === "recordado" && cl) lines.push("Cliente recordado de una OC anterior con el mismo lugar de entrega.");
     else if (!rec.client && rec.delivery) lines.push("No pude reconocer el cliente por el lugar de entrega («" + rec.delivery + "»): elegilo.");
     const a = rec.auto;
-    if (cl && cl.kind === "oc") { /* sin hoja en el Excel: se explica abajo */ }
+    const sheetOther = cl && cl.kind === "oc" && rec.otherSheet && a && !a.missing;
+    if (cl && cl.kind === "oc" && !sheetOther) { /* sin hoja en el Excel: se explica abajo */ }
     else if (cl && a) {
       if (a.error) lines.push("⚠ " + a.error);
       else lines.push("✔ Cantidades del Excel: " + a.info + ".");
       (a.warnings || []).forEach((w) => lines.push("⚠ " + w));
     } else if (cl && rec.pmode && !excel) lines.push("Para leer las entregas del Excel de Despachos tocá “Buscar OC del mes” (o pegá la tabla en “Entregas y coincidencias”).");
-    if (parsedPaste(rec).source === "oc") lines.push(cl ? (cl.kind === "oc" ? "Cliente fuera del Excel: se usan las cantidades pedidas en la OC." : "Este cliente no figura en el Excel: se usan las cantidades pedidas en la OC.") : "Sin cliente: se usan las cantidades pedidas en la OC. Elegí el cliente para tomar las entregas del Excel.");
+    if (parsedPaste(rec).source === "oc") lines.push(cl ? (cl.kind === "oc" ? "Sin hoja del Excel: se usan las cantidades pedidas en la OC (podés elegir una hoja del Excel arriba)." : "Este cliente no figura en el Excel: se usan las cantidades pedidas en la OC.") : "Sin cliente: se usan las cantidades pedidas en la OC. Elegí el cliente para tomar las entregas del Excel.");
     $("ocAutoInfo").innerHTML = lines.map((l) => esc(l)).join("<br>");
   }
 
@@ -168,6 +175,10 @@
     rec.client = $("ocClient").value || ""; rec.clientHow = "manual";
     if (rec.client && rec.delivery) clientAliases[D.norm(rec.delivery)] = rec.client;       // se acuerda para el mes que viene
     recomputeAuto(rec); save(); render();
+  });
+  $("ocOtherSheet").addEventListener("change", () => {
+    const rec = cur(); if (!rec) return;
+    rec.otherSheet = $("ocOtherSheet").value || ""; recomputeAuto(rec); save(); render();
   });
   $("ocPeriod").addEventListener("change", () => {
     const rec = cur(); if (!rec) return;
@@ -497,7 +508,7 @@
         const r = F.parseInvoice(ex.pages);
         if (r.ok) { base.total = r.total; base.ok = true; base.date = r.date; } else base.error = "No encontré el importe total. Cargalo a mano.";
       }
-    } catch (e) { base.error = "No se pudo leer el PDF (" + e.message + "). Cargá el importe a mano."; }
+    } catch (e) { base.error = "No se pudo leer el PDF (" + e.message + "). Cargá el importe a mano. [lector " + ((window.PdfText && window.PdfText.version) || "viejo: falta subir pdftext.js") + "]"; }
     facCache[f.id] = base;
   }
   async function loadFacturas(list, say) {

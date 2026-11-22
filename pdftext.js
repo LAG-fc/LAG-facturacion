@@ -238,6 +238,6 @@
     return { pages, hasText: pages.some((p) => p.items.length > 0) };
   }
 
-  const api = { extract, pageItems };
+  const api = { extract, pageItems, version: "7.3" };
   if (typeof module === "object" && module.exports) module.exports = api; else root.PdfText = api;
 })(typeof self !== "undefined" ? self : this);
