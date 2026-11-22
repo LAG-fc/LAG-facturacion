@@ -93,3 +93,9 @@ NOVEDAD v7.0 — SECCIÓN "FACTURACIÓN"
 NOVEDAD v7.1 — PDF PROTEGIDOS
 - La página ahora puede leer PDF "protegidos" que se abren sin contraseña (muy común en facturas): el contenido venía cifrado y antes
   aparecía "El PDF está protegido con contraseña". No hace falta modificar los PDF. Solo falla si el PDF pide contraseña para abrirse.
+
+NOVEDAD v7.2
+- Corregida la lectura de facturas protegidas (ahora se leen las facturas reales de ARCA).
+- Nueva opción de cliente "Otro" (usa las cantidades pedidas en la OC).
+- El recuadro de "Buscar OC del mes" se cierra solo al terminar; el resultado queda en una línea de estado.
+- Tipografía de los títulos de OC y porcentajes cambiada a la misma letra de la página (sin serif).

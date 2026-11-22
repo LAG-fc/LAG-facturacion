@@ -131,8 +131,10 @@
   // Calcula (si se puede) la tabla de entregas desde el Excel de Despachos
   function recomputeAuto(rec) {
     const cl = D.clientById(rec.client), range = D.periodRange(rec.pmode, rec.pcustom);
+    if (cl && cl.kind === "oc") { rec.auto = { rows: [], info: "", warnings: [], error: "", missing: true, file: excel ? excel.name : "" }; return; }
     if (!excel) { if (!rec.auto) rec.auto = null; return; }                     // sin Excel cargado se conserva lo último leído
     if (!cl) { rec.auto = { rows: [], info: "", warnings: [], error: "Elegí el cliente de esta OC." }; return; }
+    if (cl.kind === "oc") { rec.auto = { rows: [], info: "", warnings: [], error: "", missing: true, file: excel.name }; return; }
     const r = D.extractTable(excel.wb, cl, range, monthOf(rec));
     rec.auto = { rows: r.rows, info: r.info, warnings: r.warnings, error: r.error, missing: !!r.missing, file: excel.name };
   }
@@ -151,12 +153,13 @@
     else if (rec.clientHow === "recordado" && cl) lines.push("Cliente recordado de una OC anterior con el mismo lugar de entrega.");
     else if (!rec.client && rec.delivery) lines.push("No pude reconocer el cliente por el lugar de entrega («" + rec.delivery + "»): elegilo.");
     const a = rec.auto;
-    if (cl && a) {
+    if (cl && cl.kind === "oc") { /* sin hoja en el Excel: se explica abajo */ }
+    else if (cl && a) {
       if (a.error) lines.push("⚠ " + a.error);
       else lines.push("✔ Cantidades del Excel: " + a.info + ".");
       (a.warnings || []).forEach((w) => lines.push("⚠ " + w));
     } else if (cl && rec.pmode && !excel) lines.push("Para leer las entregas del Excel de Despachos tocá “Buscar OC del mes” (o pegá la tabla en “Entregas y coincidencias”).");
-    if (parsedPaste(rec).source === "oc") lines.push(cl ? "Este cliente no figura en el Excel: se usan las cantidades pedidas en la OC." : "Sin cliente: se usan las cantidades pedidas en la OC. Elegí el cliente para tomar las entregas del Excel.");
+    if (parsedPaste(rec).source === "oc") lines.push(cl ? (cl.kind === "oc" ? "Cliente fuera del Excel: se usan las cantidades pedidas en la OC." : "Este cliente no figura en el Excel: se usan las cantidades pedidas en la OC.") : "Sin cliente: se usan las cantidades pedidas en la OC. Elegí el cliente para tomar las entregas del Excel.");
     $("ocAutoInfo").innerHTML = lines.map((l) => esc(l)).join("<br>");
   }
 
@@ -469,6 +472,9 @@
       const noClient = fresh.filter((r) => !r.client).length;
       say("Listo: " + fresh.length + " OC cargadas." + (noClient ? " " + noClient + " sin cliente reconocido: elegilo en cada una." : " Todas con cliente sugerido: revisalos."), "ok-line");
       problems.forEach((p) => say(p, "bad-line"));
+      searching = false; mGo.disabled = false;
+      setStatus(fresh.length + " OC cargadas" + (noClient ? " (" + noClient + " sin cliente reconocido)" : "") + "." + (problems.length ? " No se pudieron leer: " + problems.map((p) => p.split(":")[0]).join(", ") + "." : ""), problems.length ? "bad-txt" : "");
+      setTimeout(() => { if (mDlg.open && !searching) mDlg.close(); }, 700);
     } catch (err) {
       console.error(err);
       say(err.message || "No se pudo completar la búsqueda.", "bad-line");

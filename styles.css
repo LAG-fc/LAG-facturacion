@@ -349,14 +349,14 @@ textarea { resize: vertical; line-height: 1.5; font-family: var(--sans); }
 .oc-del { opacity: .55; } .oc-chip:hover .oc-del, .oc-del:focus-visible { opacity: 1; }
 .fac-month { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
 .fac-month .fm-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--muted); }
-.fac-month .fm-top b { font-size: 20px; color: var(--wine); font-family: var(--serif); }
+.fac-month .fm-top b { font-size: 20px; color: var(--wine); font-family: var(--sans); font-weight: 700; }
 .fac-month small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .link-btn { border: 0; background: none; color: var(--wine); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 6px 4px; text-align: left; }
 .link-btn.tiny { font-size: 12px; padding: 2px 4px; }
 .oc-top { padding: 16px 20px 14px; }
 .oc-top-row { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
-.oc-name { font-size: 20px; font-family: var(--serif); }
-.oc-name b { color: var(--wine); }
+.oc-name { font-size: 20px; font-family: var(--sans); font-weight: 700; letter-spacing: -.01em; }
+.oc-name b { color: var(--wine); font-weight: 700; }
 .oc-top .client-row { margin: 0; }
 #ocAutoInfo { margin: 8px 0 0; }
 .bill { margin-top: 12px; }
@@ -364,7 +364,7 @@ textarea { resize: vertical; line-height: 1.5; font-family: var(--sans); }
 .stats div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .stats span { font-size: 12px; color: var(--muted); }
 .stats b { font-size: 18px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.stats .pct-big { font-family: var(--serif); font-size: 34px; font-weight: 700; color: var(--wine); line-height: 1; }
+.stats .pct-big { font-family: var(--sans); letter-spacing: -.02em; font-size: 34px; font-weight: 700; color: var(--wine); line-height: 1; }
 .bill .progress { height: 10px; margin-top: 10px; }
 .bill .badge { margin: 10px 0 0; }
 .sec { padding: 0; overflow: hidden; }

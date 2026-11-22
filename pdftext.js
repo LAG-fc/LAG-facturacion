@@ -183,7 +183,20 @@
   // ---- protección con clave de usuario vacía ----
   function strAt(s, i) {                       // texto binario en s[i] ("<hex>" o "(literal)")
     if (s[i] === "<") { const hex = s.slice(i + 1, s.indexOf(">", i)).replace(/\s+/g, ""); let out = ""; for (let k = 0; k + 1 < hex.length + 1; k += 2) out += String.fromCharCode(parseInt(hex.substr(k, 2).padEnd(2, "0"), 16)); return out; }
-    return s[i] === "(" ? readString(s, i).str : "";
+    if (s[i] !== "(") return "";
+    let depth = 1, out = ""; i++;                                    // texto literal en bytes crudos (sin convertir caracteres)
+    while (i < s.length && depth > 0) {
+      const c = s[i];
+      if (c === "\\") {
+        const n = s[i + 1];
+        if (n === "n") { out += "\n"; i += 2; } else if (n === "r") { out += "\r"; i += 2; } else if (n === "t") { out += "\t"; i += 2; }
+        else if (n === "b") { out += "\b"; i += 2; } else if (n === "f") { out += "\f"; i += 2; }
+        else if (/[0-7]/.test(n)) { let o = "", k = i + 1; while (k < i + 4 && /[0-7]/.test(s[k])) o += s[k++]; out += String.fromCharCode(parseInt(o, 8) & 255); i = k; }
+        else if (n === "\r") { i += s[i + 2] === "\n" ? 3 : 2; } else if (n === "\n") { i += 2; }
+        else { out += n; i += 2; }
+      } else if (c === "(") { depth++; out += c; i++; } else if (c === ")") { depth--; if (depth > 0) out += c; i++; } else { out += c; i++; }
+    }
+    return out;
   }
   function pdfString(dict, key) {
     const m = new RegExp("/" + key + "\\s*[<(]").exec(dict); if (!m) return "";

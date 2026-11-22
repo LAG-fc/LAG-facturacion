@@ -13,7 +13,8 @@
     { id: "lp", name: "La Plata", sheet: "SAE La Plata", kind: "pan", hints: [/LA PLATA/] },
     { id: "up59", name: "UP 59", sheet: "Merlo", kind: "pan", hints: [/\bUP\s*N?[°º.]?\s*59\b/, /UNIDAD.*\b59\b/, /\b59\b/], title: /\bUP\s*N?[°º.]?\s*59\b|UNIDAD\s+PENITENCIARIA\s*N?[°º.]?\s*59\b/, mrow: 1 },
     { id: "up60", name: "UP 60", sheet: "Merlo", kind: "pan", hints: [/\bUP\s*N?[°º.]?\s*60\b/, /UNIDAD.*\b60\b/, /\b60\b/], title: /\bUP\s*N?[°º.]?\s*60\b|UNIDAD\s+PENITENCIARIA\s*N?[°º.]?\s*60\b/, mrow: 2 },
-    { id: "alc", name: "Alcaidía", sheet: "Merlo", kind: "pan", hints: [/ALCAID/], title: /ALCAID/, mrow: 0 }
+    { id: "alc", name: "Alcaidía", sheet: "Merlo", kind: "pan", hints: [/ALCAID/], title: /ALCAID/, mrow: 0 },
+    { id: "otro", name: "Otro", sheet: null, kind: "oc", hints: [] }
   ];
   const PAN = "PAN MIGNON BLANCO";
   const clientById = (id) => CLIENTS.find((c) => c.id === id) || null;
@@ -168,6 +169,7 @@
   function extractTable(wb, client, range, month) {
     const out = { rows: [], warnings: [], info: "", error: "" };
     if (!range) { out.error = "Elegí el período (quincena, mes o días)."; return out; }
+    if (client.kind === "oc") { out.missing = true; out.error = "Este cliente no tiene hoja en el Excel."; return out; }
     const s = sheetsFor(wb, client);
     if (s.error) { out.error = s.error; out.missing = true; return out; }
     if (client.kind === "tabla") {
