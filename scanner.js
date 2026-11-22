@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "8.0";
+  const APP_VERSION = "8.1";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 

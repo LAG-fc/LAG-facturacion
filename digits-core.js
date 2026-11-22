@@ -517,7 +517,7 @@
     }
     // hipótesis libre
     { let cost = 0; const picks = {}; slotKeys.forEach((k) => { const fv = freeVal(k); if (fv) { cost += fv.cost; picks[k] = { text: fv.text, value: fv.value, src: "libre", cost: fv.cost }; } else cost += 4; }); hyps.push({ id: null, cost, picks, kind: "libre" }); }
-    const nEx = Math.max(1, hyps.length - 1), pe = R.params.priorExcel;
+    const nEx = Math.max(1, ctx.noDate ? Math.min(hyps.length - 1, 8) : hyps.length - 1), pe = R.params.priorExcel;   // sin fecha hay muchas entregas candidatas: la masa a priori no se diluye entre todas
     const priors = hyps.map((h) => (h.kind === "excel" ? pe / nEx : (dayEntries ? 1 - pe : 1)));
     const post = softmaxNeg(hyps.map((h) => h.cost / Math.max(1, slotKeys.length)), priors);
     let bi = 0; post.forEach((p, i) => { if (p > post[bi]) bi = i; });
@@ -635,6 +635,19 @@
   R.decodeAll = function (an, ctx, wz) {
     ctx = ctx || {}; wz = wz || {};
     const W = (z) => wz[z] || {};
+    if (ctx.noDate) {
+      // sin fecha: cada entrega (día × cliente) del Excel del mes es una hipótesis; el cliente sale de las cantidades
+      const all = {}; const dd = ctx.dayData || {};
+      Object.keys(dd).forEach((d) => Object.keys(dd[d]).forEach((cid) => { all[cid + "|" + d] = dd[d][cid]; }));
+      const q = R.decodeQty(an.qty, W("qty"), Object.assign({}, ctx, { dayData: { all } }), "all", an.geom);
+      const base = (x) => (x == null ? null : String(x).split("|")[0]);
+      const agg = {};
+      (q.client.ranking || []).forEach((r) => { const k = r.kind === "excel" ? base(r.id) : null; const key = k === null ? "_libre" : k; agg[key] = (agg[key] || 0) + r.p; });
+      const ranking = Object.keys(agg).map((k) => ({ id: k === "_libre" ? null : k, p: agg[k], kind: k === "_libre" ? "libre" : "excel" })).sort((a, b) => b.p - a.p);
+      const top = ranking[0];
+      q.client = top && top.id ? { id: top.id, conf: top.p, ranking } : { id: null, conf: 0, ranking };
+      return { qty: q, oc: R.decodeOc(an.oc, W("oc"), ctx.ocs || []), usedExcel: !!ctx.dayData };
+    }
     const date = R.decodeDate(an.date, W("date"), ctx);
     // el detalle del Excel sirve solo si es del mismo mes que la fecha leída
     const useDay = ctx.dayData && (!ctx.month || date.m === ctx.month);

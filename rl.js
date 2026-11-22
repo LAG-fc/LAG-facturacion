@@ -123,13 +123,13 @@
     if (!S) RL.load();
     const an = fb.an, truth = fb.truth, shown = fb.shown || {}, ctx = fb.ctx || {};
     const bucketQ = RL.bucket((an.qty.find((x) => x.arm === "fina") || an.qty[0] || {}).an);
-    const bucketD = RL.bucket((an.date.find((x) => x.arm === "fina") || an.date[0] || {}).an);
+    const bucketD = (an.date && an.date.length) ? RL.bucket((an.date.find((x) => x.arm === "fina") || an.date[0] || {}).an) : null;
     const eq = (a, b) => Math.abs(a - b) < 0.005;
     const samples = [];
     let reward = 0, nf = 0;
 
     // fecha
-    if (truth.date && truth.date.d) {
+    if (truth.date && truth.date.d && an.date && an.date.length) {
       an.date.forEach((a) => { const r = C.decodeDate([a], { [a.arm]: 1 }, ctx); const ok = r.d === truth.date.d && r.m === truth.date.m; const rec = armRec("date", bucketD, a.arm); if (ok) rec.a++; else rec.b++; });
       if (shown.date) { const ok = shown.date.d === truth.date.d && shown.date.m === truth.date.m; noteOutcome("date", Math.min(shown.date.conf.d, shown.date.conf.m), ok); reward += ok ? 1 : 0; nf++; }
       const ref = an.date.find((x) => x.arm === "fina") || an.date[0];
@@ -141,9 +141,13 @@
     }
     // cantidades
     if (truth.rows && Object.keys(truth.rows).length) {
-      const day = truth.date ? truth.date.d : null, keys = Object.keys(truth.rows);
+      let day = truth.date ? truth.date.d : null, keys = Object.keys(truth.rows), qctx = ctx;
+      if (ctx.noDate && ctx.dayData) {                                   // sin fecha: cada entrega (día × cliente) es una hipótesis
+        const all = {}; Object.keys(ctx.dayData).forEach((d) => Object.keys(ctx.dayData[d]).forEach((c) => { all[c + "|" + d] = ctx.dayData[d][c]; }));
+        qctx = Object.assign({}, ctx, { dayData: { all } }); day = "all";
+      }
       an.qty.forEach((a) => {
-        const r = C.decodeQty([a], { [a.arm]: 1 }, ctx, day, an.geom);
+        const r = C.decodeQty([a], { [a.arm]: 1 }, qctx, day, an.geom);
         const ok = r.rows.length === keys.length && keys.every((k) => { const g = r.rows.find((x) => x.row === Number(k)); return g && g.value !== null && eq(g.value, truth.rows[k]); });
         const rec = armRec("qty", bucketQ, a.arm); if (ok) rec.a++; else rec.b++;
       });
@@ -152,10 +156,9 @@
         shown.qty.rows.forEach((g) => { if (truth.rows[g.row] === undefined && g.value !== null) { noteOutcome("qty", g.conf, false); nf++; } });
       }
       // ¿coincidió el valor confirmado con el Excel? (ajusta cuánto confiar en él)
-      const dayEntries = ctx.dayData && day && ctx.dayData[day];
+      const dayEntries = qctx.dayData && day && qctx.dayData[day];
       if (dayEntries) {
-        const all = []; Object.keys(dayEntries).forEach((c) => (dayEntries[c].any || []).forEach((v) => all.push(v)));
-        const matched = keys.every((k) => all.some((v) => eq(v, truth.rows[k])));
+        const matched = Object.keys(dayEntries).some((c) => { const vs = dayEntries[c].any || []; return keys.every((k) => vs.some((v) => eq(v, truth.rows[k]))); });
         if (matched) S.excel.hit++; else S.excel.miss++;
         S.params.priorExcel = Math.min(0.97, Math.max(0.6, (S.excel.hit + 9) / (S.excel.hit + S.excel.miss + 10)));
       }

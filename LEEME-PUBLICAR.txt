@@ -1,5 +1,8 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.0
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.1
 =======================================================
+
+NOVEDADES v8.1: el lector YA NO lee fecha ni N° de remito (se quitaron de la pantalla de revisión y de las zonas).
+El cliente se deduce de las cantidades comparándolas con todas las entregas del Excel del mes. Solo se leen cliente, OC y cantidades.
 
 NOVEDADES v8.0 · LECTOR AUTOMÁTICO DE REMITOS + APRENDIZAJE
 =========================================================

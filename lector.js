@@ -15,7 +15,7 @@
   const jget = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v === null ? d : v; } catch (e) { return d; } };
   function buildCtx() {
     const now = new Date(), dd = jget("despDia", null), ocs = (jget("ocData", []) || []).map((r) => String(r.oc || "")).filter(Boolean);
-    const ctx = { month: dd && dd.month ? dd.month : now.getMonth() + 1, year: now.getFullYear(), ocs };
+    const ctx = { noDate: true, month: dd && dd.month ? dd.month : now.getMonth() + 1, year: now.getFullYear(), ocs };
     if (dd && dd.data) {
       const out = {};
       Object.keys(dd.data).forEach((day) => Object.keys(dd.data[day]).forEach((cid) => {
@@ -42,8 +42,6 @@
     await sleep(0);
     const an = { nro: [], date: [], qty: [], oc: [], geom: crops.geom };
     for (const id of R.armIds()) {
-      an.nro.push({ arm: id, an: R.analyze(crops.nro, "nro", id) }); await sleep(0);
-      an.date.push({ arm: id, an: R.analyze(crops.date, "date", id) }); await sleep(0);
       an.qty.push({ arm: id, an: R.analyze(crops.qty, "qty", id, { digitH: crops.geom.pitch * 0.62 }) }); await sleep(0);
       an.oc.push({ arm: id, an: R.analyze(crops.oc, "oc", id, { digitH: crops.geom.pitch * 0.62 }) }); await sleep(0);
     }
@@ -51,21 +49,21 @@
   }
   function weightsOf(an) {
     const ref = (l) => (l.find((x) => x.arm === "fina") || l[0] || {}).an;
-    const bq = RL.bucket(ref(an.qty)), bd = RL.bucket(ref(an.date));
-    return { qty: RL.weights("qty", bq), date: RL.weights("date", bd), nro: RL.weights("nro", bd), oc: RL.weights("oc", bq) };
+    const bq = RL.bucket(ref(an.qty));
+    return { qty: RL.weights("qty", bq), oc: RL.weights("oc", bq) };
   }
   function decode(read) {
     read.ctx = buildCtx();
     read.result = R.decodeAll(read.an, read.ctx, weightsOf(read.an));
     const r = read.result;
-    read.noInk = !r.qty.rows.length && !(r.date.conf && r.date.conf.d > 0.5);
+    read.noInk = !r.qty.rows.length;
     return r;
   }
   const level = (c) => { const v = RL.calibrate(c); return v >= 0.85 ? "ok" : v >= 0.55 ? "warn" : "bad"; };
   const worst = (a, b) => ({ ok: 0, warn: 1, bad: 2 }[a] >= { ok: 0, warn: 1, bad: 2 }[b] ? a : b);
   function overall(read) {
     const r = read.result; if (!r) return "bad";
-    let lv = level(Math.min(r.date.conf.d, r.date.conf.m));
+    let lv = "ok";
     if (!r.qty.rows.length) return "bad";
     r.qty.rows.forEach((x) => { lv = worst(lv, level(x.conf)); });
     return lv;
@@ -78,7 +76,7 @@
     if (rd.status === "error") { page.readLabel = "No se pudo leer"; page.readClass = "bad"; return; }
     if (rd.confirmed) { page.readLabel = "✔ " + (rd.values.rows.map((x) => A.formatQty(x.value)).join(" · ") || "confirmado"); page.readClass = "done"; return; }
     const r = rd.result;
-    page.readLabel = rd.noInk ? "Revisar" : (r.qty.rows.map((x) => x.text).join(" · ") || "—") + " · " + fmtDate(r.date);
+    page.readLabel = rd.noInk ? "Revisar" : (r.qty.rows.map((x) => x.text).join(" · ") || "—");
     page.readClass = rd.noInk ? "bad" : overall(rd);
   }
 
@@ -144,15 +142,12 @@
     const r = rd.result;
     // recortes de lo que "vio" el lector
     const mk = (title, crop, w) => { if (!crop) return; const d = document.createElement("div"); d.className = "rd-crop"; d.innerHTML = "<small>" + title + "</small>"; const cv = document.createElement("canvas"); drawGray(cv, crop, w); d.appendChild(cv); $("rdCrops").appendChild(d); };
-    mk("Fecha", rd.crops.date, 260); mk("N° de remito", rd.crops.nro, 260); mk("Cantidades", rd.crops.qty, 260);
+    mk("Cantidades", rd.crops.qty, 260);
     if (!calibrated()) { banner.hidden = false; banner.className = "rd-banner warn"; banner.textContent = "Todavía no marcaste las zonas del remito: tocá “Marcar zonas” (una sola vez) para que lea en el lugar correcto."; }
     else if (rd.confirmed) { banner.hidden = false; banner.className = "rd-banner ok"; banner.textContent = "Confirmado ✔. Si corregís algo, volvé a tocar “Confirmar y aprender”."; }
     else if (rd.noInk) { banner.hidden = false; banner.className = "rd-banner bad"; banner.textContent = "No encontré escritura en las zonas marcadas. Revisá que la foto muestre el remito completo y derecho, o ajustá las zonas."; }
     fillFields(rd);
     // N° de remito repetido
-    const nroOf = (p) => { const q = p.read; if (!q) return ""; if (q.confirmed && q.values) return q.values.nro; return q.result && q.result.nro ? q.result.nro.text : ""; };
-    const nro = $("rdNro").value;
-    if (nro) { const other = list.findIndex((p, i) => i !== idx && nroOf(p) === nro); if (other >= 0) { banner.hidden = false; banner.className = "rd-banner warn"; banner.textContent = "El N° de remito " + nro + " también aparece en la foto " + (other + 1) + ": ¿es un duplicado?"; } }
   }
 
   function fillFields(rd) {
@@ -161,19 +156,17 @@
     sel.innerHTML = '<option value="">— sin identificar —</option>' + clientNames().map((c) => '<option value="' + c.id + '">' + esc(c.name) + "</option>").join("");
     const saved = rd && rd.edit, r = rd && rd.result;
     const src = saved || (r ? {
-      d: r.date.d, m: r.date.m, y: r.date.y, nro: r.nro.text || "", client: r.qty.client && r.qty.client.id ? r.qty.client.id : "", oc: r.oc.num || "",
+      client: r.qty.client && r.qty.client.id ? r.qty.client.id : "", oc: r.oc.num || "",
       rows: r.qty.rows.map((x) => ({ row: x.row, text: x.text, value: x.value, conf: x.conf, source: x.source, excelName: x.excelName }))
-    } : { d: "", m: "", y: "", nro: "", client: "", oc: "", rows: [] });
+    } : { client: "", oc: "", rows: [] });
     if (rd && rd.confirmed && rd.values && !saved) { /* se muestra lo confirmado */ }
-    $("rdD").value = src.d || ""; $("rdM").value = src.m || ""; $("rdY").value = src.y || ""; $("rdNro").value = src.nro || ""; sel.value = src.client || ""; $("rdOc").value = src.oc || "";
-    dot("rdDateDot", r ? Math.min(r.date.conf.d, r.date.conf.m) : null, "Fecha");
-    dot("rdNroDot", r && r.nro ? r.nro.conf : null, "N° de remito");
+    sel.value = src.client || ""; $("rdOc").value = src.oc || "";
     dot("rdClientDot", r && r.qty.client && r.qty.client.id ? r.qty.client.conf : null, "Cliente según las cantidades");
     dot("rdOcDot", r && r.oc && r.oc.num ? r.oc.conf : null, "OC");
     const box = $("rdRows"); box.innerHTML = "";
     src.rows.forEach((x) => box.appendChild(rowEl(x, cat)));
     if (!src.rows.length) box.innerHTML = '<p class="hint">No encontré cantidades. Agregá un renglón para cargarlas a mano.</p>';
-    $("rdNote").textContent = r && r.qty.client && r.qty.client.id ? "El cliente se dedujo de las cantidades: coinciden con las entregas de " + (clientNames().find((c) => c.id === r.qty.client.id) || {}).name + " ese día." : (r && ctxHas(rd) ? "Ninguna entrega del Excel coincide con lo escrito: revisá las cantidades." : "");
+    $("rdNote").textContent = r && r.qty.client && r.qty.client.id ? "El cliente se dedujo de las cantidades: coinciden con una entrega de " + (clientNames().find((c) => c.id === r.qty.client.id) || {}).name + " en el Excel." : (r && ctxHas(rd) ? "Ninguna entrega del Excel coincide con lo escrito: revisá las cantidades." : "");
     const sm = RL.summary();
     $("rdStats").textContent = sm.total ? "Aprendizaje: " + sm.total + " remitos confirmados" + (sm.perfectRecent !== null ? " · " + Math.round(sm.perfectRecent * 100) + " % sin correcciones (últimos " + Math.min(40, sm.total) + ")" : "") : "Cada confirmación enseña al lector: al principio habrá que corregir más.";
     $("rdConfirm").textContent = "Confirmar y aprender";
@@ -202,8 +195,6 @@
   // Lee los campos de pantalla. Devuelve null si hay algo inválido.
   function collect() {
     let bad = false; const mark = (el, b) => { el.classList.toggle("bad", !!b); if (b) bad = true; };
-    const d = Number($("rdD").value), m = Number($("rdM").value); let y = Number($("rdY").value);
-    mark($("rdD"), !(d >= 1 && d <= 31)); mark($("rdM"), !(m >= 1 && m <= 12)); if (y && y < 100) y += 2000; mark($("rdY"), !(y >= 2000 && y <= 2100));
     const rows = [];
     $("rdRows").querySelectorAll(".rd-row").forEach((el) => {
       const row = Number(el.querySelector(".rr").value), t = el.querySelector(".rq").value.trim();
@@ -213,7 +204,7 @@
     });
     const keys = rows.map((x) => x.row); if (new Set(keys).size !== keys.length) { bad = true; A.setStatus("Hay dos renglones con el mismo producto.", 4000); }
     if (bad) return null;
-    return { d, m, y, nro: $("rdNro").value.replace(/\D/g, ""), client: $("rdClient").value, oc: $("rdOc").value.replace(/\D/g, ""), rows };
+    return { client: $("rdClient").value, oc: $("rdOc").value.replace(/\D/g, ""), rows };
   }
 
   function confirmCurrent() {
@@ -223,7 +214,7 @@
     // lo mostrado (lo que dedujo el lector) frente a lo confirmado: esa diferencia es la recompensa
     let res = { reward: 1, samples: 0 };
     if (rd.an) {
-      try { res = RL.learn({ an: rd.an, ctx: rd.ctx, shown: rd.result, truth: { date: { d: f.d, m: f.m, y: f.y }, nro: f.nro, rows: truthRows, oc: f.oc, client: f.client || null } }); }
+      try { res = RL.learn({ an: rd.an, ctx: rd.ctx, shown: rd.result, truth: { rows: truthRows, oc: f.oc, client: f.client || null } }); }
       catch (e) { console.error("No se pudo aprender de esta lectura:", e); }
     }
     rd.confirmed = true; rd.values = f; rd.edit = Object.assign({}, f, { rows: f.rows.map((x) => ({ row: x.row, text: x.text, value: x.value })) });
@@ -264,7 +255,7 @@
   });
 
   // ---------------------------------------------------------------- marcar las zonas
-  const ZN = [{ k: "nro", t: "N° de remito", c: "#2f6fd1" }, { k: "date", t: "Fecha", c: "#1f9d62" }, { k: "qty", t: "Cantidad", c: "#d33a3a" }, { k: "oc", t: "OC / cliente", c: "#d98a12" }];
+  const ZN = [{ k: "qty", t: "Cantidad", c: "#d33a3a" }, { k: "oc", t: "OC / cliente", c: "#d98a12" }];
   let zWork = null;
   function openZones() {
     const list = ready(); if (!list.length) { A.setStatus("Primero sacá o subí la foto de un remito completo.", 5000); return; }
@@ -313,7 +304,7 @@
     $("lectorChk").checked = enabled();
     const s = RL.summary(), f = s.fields;
     const pc = (k) => (f[k] && f[k].pct !== null ? Math.round(f[k].pct * 100) + " %" : "—");
-    $("rlSummary").textContent = s.total ? s.total + " remitos confirmados · aciertos: fecha " + pc("date") + ", cantidades " + pc("qty") + ", cliente " + pc("client") + ", OC " + pc("oc") + " · " + s.samples + " dígitos aprendidos · confianza en el Excel " + Math.round(s.priorExcel * 100) + " %." : "Todavía no aprendió nada: confirmá remitos en “Revisar lecturas”.";
+    $("rlSummary").textContent = s.total ? s.total + " remitos confirmados · aciertos: cantidades " + pc("qty") + ", cliente " + pc("client") + ", OC " + pc("oc") + " · " + s.samples + " dígitos aprendidos · confianza en el Excel " + Math.round(s.priorExcel * 100) + " %." : "Todavía no aprendió nada: confirmá remitos en “Revisar lecturas”.";
   }
   $("settingsBtn").addEventListener("click", refreshSettings);
   $("saveSettings").addEventListener("click", () => { const was = enabled(); A.settings().lector = $("lectorChk").checked; A.persistSettings(); if (!was && enabled()) ready().forEach((p) => { if (!p.read) enqueue(p); }); summary(); });
