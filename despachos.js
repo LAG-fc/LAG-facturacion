@@ -192,6 +192,24 @@
     return out;
   }
 
-  const api = { CLIENTS, clientById, suggestClient, defaultPeriodMode, periodRange, findSheet, sheetsFor, extractTable, periodLabel, otherSheets, extractOther, norm };
+  // Cantidades entregadas por día y cliente (para que el lector de remitos sepa qué valores son posibles cada día).
+  // Devuelve { "5": { up59: { "PAN MIGNON BLANCO": [495.96] }, cc: { "PAN MIGNON BLANCO": [22.4], "PAN MIGNON DE SALVADO": [11.2] } }, ... }
+  function dailyTable(wb, month) {
+    const data = {};
+    CLIENTS.filter((c) => c.sheet && c.kind !== "oc").forEach((cl) => {
+      for (let d = 1; d <= 31; d++) {
+        let r; try { r = extractTable(wb, cl, { from: d, to: d }, month); } catch (e) { r = null; }
+        if (!r || r.error || !r.rows) { if (d === 1 && r && r.missing) break; continue; }
+        r.rows.forEach((row) => {
+          if (!(row.sum > 0)) return;
+          const day = data[d] || (data[d] = {}), c = day[cl.id] || (day[cl.id] = {});
+          (c[row.name] = c[row.name] || []).push(O.round(row.sum, 3));
+        });
+      }
+    });
+    return data;
+  }
+
+  const api = { dailyTable, CLIENTS, clientById, suggestClient, defaultPeriodMode, periodRange, findSheet, sheetsFor, extractTable, periodLabel, otherSheets, extractOther, norm };
   if (typeof module === "object" && module.exports) module.exports = api; else root.Despachos = api;
 })(typeof self !== "undefined" ? self : this);

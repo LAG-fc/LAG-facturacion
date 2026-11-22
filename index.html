@@ -44,7 +44,7 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg>Instalar</button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v7.4</span>
+      <span class="ver" id="verTag">v8.0</span>
     </div>
   </header>
 
@@ -109,6 +109,10 @@
         <div class="totals-summary">
           <div><strong>Tabla de recepciones</strong><span id="totalsInfo">Sin cantidades cargadas</span></div>
           <button id="totalsBtn" class="btn soft small"><svg class="i"><use href="#i-list"/></svg>Cargar totales</button>
+        </div>
+        <div class="totals-summary" id="readSummary" hidden>
+          <div><strong>Lector de remitos</strong><span id="readInfo">—</span></div>
+          <button id="readOpenBtn" class="btn soft small"><svg class="i"><use href="#i-check"/></svg>Revisar lecturas</button>
         </div>
         <button id="saveBtn" class="btn primary big wide" disabled><svg class="i"><use href="#i-download"/></svg>Guardar como PDF</button>
       </div>
@@ -310,6 +314,64 @@
     </form>
   </dialog>
 
+  <!-- Lector de remitos: revisión de lo leído -->
+  <dialog id="readDialog" class="dlg read-dlg">
+    <div class="rd-head">
+      <div><h3>Lector de remitos</h3><p class="hint" id="rdSub"></p></div>
+      <div class="rd-nav">
+        <button type="button" id="rdPrev" class="btn ghost small" aria-label="Anterior">‹</button>
+        <span id="rdPos">1 / 1</span>
+        <button type="button" id="rdNext" class="btn ghost small" aria-label="Siguiente">›</button>
+        <button type="button" id="rdClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+    </div>
+    <div class="rd-body">
+      <div class="rd-left">
+        <div class="rd-photo"><img id="rdImg" alt="Remito"></div>
+        <div class="rd-crops" id="rdCrops"></div>
+      </div>
+      <div class="rd-right">
+        <p id="rdBanner" class="rd-banner" hidden></p>
+        <div class="rd-field"><label>Fecha</label>
+          <div class="rd-date"><input id="rdD" inputmode="numeric" maxlength="2" placeholder="día"><span>/</span><input id="rdM" inputmode="numeric" maxlength="2" placeholder="mes"><span>/</span><input id="rdY" inputmode="numeric" maxlength="4" placeholder="año"></div>
+          <i class="dot" id="rdDateDot"></i></div>
+        <div class="rd-field"><label>N° de remito</label><input id="rdNro" inputmode="numeric" maxlength="8" placeholder="—"><i class="dot" id="rdNroDot"></i></div>
+        <div class="rd-field"><label>Cliente</label><select id="rdClient"></select><i class="dot" id="rdClientDot"></i></div>
+        <div class="rd-field"><label>OC</label><input id="rdOc" inputmode="numeric" maxlength="12" placeholder="—"><i class="dot" id="rdOcDot"></i></div>
+        <div class="rd-qty-head"><strong>Cantidades</strong><button type="button" id="rdAddRow" class="btn ghost small"><svg class="i"><use href="#i-plus"/></svg>Renglón</button></div>
+        <div id="rdRows" class="rd-rows"></div>
+        <p id="rdNote" class="hint"></p>
+        <div class="rd-actions">
+          <button type="button" id="rdConfirm" class="btn primary"><svg class="i"><use href="#i-check"/></svg>Confirmar y aprender</button>
+          <button type="button" id="rdReread" class="btn secondary small">Volver a leer</button>
+        </div>
+      </div>
+    </div>
+    <div class="rd-foot">
+      <span class="hint" id="rdStats"></span>
+      <div class="rd-foot-btns">
+        <button type="button" id="rdZones" class="btn ghost small">Marcar zonas</button>
+        <button type="button" id="rdApply" class="btn soft">Pasar a la tabla de recepciones</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Marcar las zonas del remito (una sola vez) -->
+  <dialog id="zonesDialog" class="dlg read-dlg">
+    <div class="rd-head"><div><h3>Marcar las zonas del remito</h3><p class="hint">Arrastrá cada recuadro hasta su lugar y estirá la esquina para ajustar el tamaño. Se hace una sola vez; el programa se acomoda solo a las líneas impresas.</p></div>
+      <button type="button" id="znClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <div class="zn-wrap"><div class="zn-stage" id="znStage"><img id="znImg" alt="Remito"></div></div>
+    <div class="zn-legend" id="znLegend"></div>
+    <label class="field-inline zn-rows">Renglones de la tabla
+      <input id="znRows" type="text" inputmode="numeric" maxlength="2" value="14"></label>
+    <p class="hint">«Cantidad»: solo la columna de números, desde el primer renglón hasta el último (no incluyas el título). «OC / cliente»: el espacio de la derecha donde anotan a mano.</p>
+    <div class="dialog-actions">
+      <button type="button" id="znReset" class="btn ghost small">Valores de fábrica</button>
+      <button type="button" id="znCancel" class="btn secondary">Cancelar</button>
+      <button type="button" id="znSave" class="btn primary">Guardar zonas</button>
+    </div>
+  </dialog>
+
   <!-- Vista previa -->
   <dialog id="previewDialog" class="dlg preview-dlg">
     <button type="button" id="previewClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
@@ -339,8 +401,21 @@
       </div>
       <p class="hint">Con el puente configurado, “Guardar PDF” lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto; ya no se descarga en el dispositivo. Sin puente, el PDF se descarga como antes.</p>
     </fieldset>
+    <fieldset class="bridge">
+      <legend>Lector de remitos y aprendizaje</legend>
+      <label class="switch field-switch"><input type="checkbox" id="lectorChk"><span class="slider"></span><span class="switch-text">Leer los remitos automáticamente al escanearlos</span></label>
+      <p class="hint" id="rlSummary">—</p>
+      <div class="row-inline">
+        <button type="button" id="rlZones" class="btn ghost small">Marcar zonas</button>
+        <button type="button" id="rlExport" class="btn ghost small">Exportar aprendizaje</button>
+        <button type="button" id="rlImport" class="btn ghost small">Importar</button>
+        <button type="button" id="rlReset" class="btn ghost small danger-text">Reiniciar</button>
+        <input type="file" id="rlFile" accept="application/json,.json" hidden>
+      </div>
+      <p class="hint">Cada vez que confirmás o corregís una lectura el programa aprende (en este dispositivo, sin enviar nada). Exportá el aprendizaje para pasarlo a otro dispositivo.</p>
+    </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">7.4</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">8.0</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
@@ -358,7 +433,11 @@
   <script src="xlsx.js"></script>
   <script src="despachos.js"></script>
   <script src="pdf.js"></script>
+  <script src="digits-model.js"></script>
+  <script src="digits-core.js"></script>
+  <script src="rl.js"></script>
   <script src="scanner.js"></script>
+  <script src="lector.js"></script>
   <script src="oc.js"></script>
 </body>
 </html>

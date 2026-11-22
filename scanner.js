@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "7.4";
+  const APP_VERSION = "8.0";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 
@@ -22,7 +22,7 @@
     "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE",
     "SANDWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
   ];
-  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n") };
+  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n"), lector: true, zones: null };
   let settings = { ...DEFAULTS };
   let stream = null;
   let stillOk = null;               // null = sin probar; true/false = se puede / no se puede la foto de máxima resolución
@@ -366,6 +366,7 @@
           p.blob = r.blob; p.w = r.w; p.h = r.h; p.cropped = r.cropped;
           p.url = URL.createObjectURL(r.blob); p.thumbUrl = URL.createObjectURL(r.thumb);
           p.status = "ok";
+          if (window.RemitosApp && window.RemitosApp.onPageReady) { try { window.RemitosApp.onPageReady(p); } catch (e2) { console.warn(e2); } }
         } catch (e) {
           console.error("No se pudo procesar la foto:", e);
           if (pages.includes(job.page)) job.page.status = "error";
@@ -487,7 +488,7 @@
     c = document.createElement("div");
     c.className = "thumb";
     c.innerHTML =
-      '<div class="imgbox"><img alt=""><span class="num"></span><div class="state"></div></div>' +
+      '<div class="imgbox"><img alt=""><span class="num"></span><span class="rd" hidden></span><div class="state"></div></div>' +
       '<div class="tools"><button type="button" class="rot" title="Girar 90°">' + ICON("rotate") + 'Girar</button>' +
       '<button type="button" class="del" title="Eliminar">' + ICON("trash") + 'Quitar</button></div>';
     c.querySelector(".imgbox").addEventListener("click", () => { if (page.status === "ok" && page.url) openPreview(page); });
@@ -509,6 +510,8 @@
     else if (page.status === "error") { st.hidden = false; st.innerHTML = "<span>No se pudo procesar.<br>Quitala y probá de nuevo.</span>"; }
     else st.hidden = true;
     c.querySelector(".rot").disabled = page.status !== "ok" || !!page.busy;
+    const rd = c.querySelector(".rd");
+    rd.hidden = !page.readLabel; rd.textContent = page.readLabel || ""; rd.className = "rd " + (page.readClass || "");
   }
 
   function syncCards() {
@@ -525,12 +528,13 @@
     saveBtn.disabled = pages.length === 0;
     clearBtn.disabled = pages.length === 0 && !totalsFilledCount();
     updateTotalsInfo();
+    if (window.RemitosApp && window.RemitosApp.onSync) { try { window.RemitosApp.onSync(); } catch (e) { /* nada */ } }
   }
 
   function releasePage(p) {
     if (p.url) URL.revokeObjectURL(p.url);
     if (p.thumbUrl) URL.revokeObjectURL(p.thumbUrl);
-    p.url = p.thumbUrl = ""; p.blob = null;
+    p.url = p.thumbUrl = ""; p.blob = null; p.read = null;
   }
 
   function removePage(p) {
@@ -554,7 +558,7 @@
       p.url = URL.createObjectURL(r.blob); p.thumbUrl = URL.createObjectURL(thumb);
     } catch (e) { console.error(e); setStatus("No se pudo girar la foto.", 4000); }
     p.busy = false;
-    if (myEpoch === epoch) syncCards();
+    if (myEpoch === epoch) { syncCards(); if (window.RemitosApp && window.RemitosApp.onPageReady) { p.read = null; try { window.RemitosApp.onPageReady(p); } catch (e2) { console.warn(e2); } } }
   }
 
   function openPreview(p) {
@@ -964,7 +968,11 @@
         stream = null; video.srcObject = null; resetDragState();
       }
     },
-    askConfirm, showMessage
+    askConfirm, showMessage,
+    // para el lector de remitos (lector.js)
+    pages: () => pages, catalog: catalogList, settings: () => settings, persistSettings, setStatus,
+    parseNumber, formatQty, totals: () => totalsState, persistTotals, refresh: () => syncCards(), updateTotalsInfo,
+    onPageReady: null, onSync: null
   };
 
   // ---------- Instalación como aplicación ----------

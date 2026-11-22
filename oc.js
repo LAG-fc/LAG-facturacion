@@ -429,6 +429,15 @@
   mDlg.addEventListener("cancel", (e) => { if (searching) e.preventDefault(); });
   $("ocMonthForm").addEventListener("submit", (e) => { e.preventDefault(); if (!searching) searchMonth(mInput.value.trim()); });
 
+  // Guarda, para el lector de remitos, qué se entregó cada día de este mes (queda en el navegador)
+  function saveDayData(mes) {
+    try {
+      const mi = MESES.indexOf(String(mes).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim());
+      if (mi < 0 || !excel) return;
+      localStorage.setItem("despDia", JSON.stringify({ month: mi + 1, mes, file: excel.name, at: Date.now(), data: D.dailyTable(excel.wb, mi + 1) }));
+    } catch (e) { console.warn("No se pudo guardar el detalle diario del Excel:", e); }
+  }
+
   async function searchMonth(mes) {
     if (!mes) { progress('<span class="bad-line">Escribí el mes (por ejemplo Noviembre).</span>'); return; }
     searching = true; mGo.disabled = true;
@@ -453,7 +462,7 @@
         const f = r.archivos[0];
         if (f.error) say("No se pudo bajar el Excel: " + f.error, "bad-line");
         else {
-          try { excel = { name: f.name, wb: await window.Xlsx.read(b64ToBuf(f.b64)), loadedAt: Date.now() }; say("Excel leído: hojas " + excel.wb.sheets.filter((s) => !s.hidden).map((s) => s.name).join(", ") + ".", "ok-line"); }
+          try { excel = { name: f.name, wb: await window.Xlsx.read(b64ToBuf(f.b64)), loadedAt: Date.now() }; saveDayData(mes); say("Excel leído: hojas " + excel.wb.sheets.filter((s) => !s.hidden).map((s) => s.name).join(", ") + ".", "ok-line"); }
           catch (e) { say("No pude leer el Excel: " + e.message, "bad-line"); }
         }
       }

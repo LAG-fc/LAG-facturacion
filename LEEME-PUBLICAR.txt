@@ -1,5 +1,24 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 7.0
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.0
 =======================================================
+
+NOVEDADES v8.0 · LECTOR AUTOMÁTICO DE REMITOS + APRENDIZAJE
+=========================================================
+ARCHIVOS NUEVOS PARA SUBIR A GITHUB (además de los de siempre): digits-model.js, digits-core.js, rl.js, lector.js
+(index.html, scanner.js, oc.js, despachos.js, styles.css y sw.js también cambiaron: subir todo).
+- Cada foto aceptada se lee sola (gratis, sin internet, dentro del navegador): fecha, N° de remito, cliente, OC y cantidades.
+  Usa como contexto el Excel de despachos del mes (Órdenes de compra > buscar mes) y las OC cargadas.
+- En cada miniatura aparece una etiqueta de color (verde = confiable, amarillo = revisar, rojo = dudosa).
+  Tocá "Revisar lecturas" para abrir el borrador: corregís lo que haga falta y confirmás.
+- "Pasar a la tabla de recepciones" suma las cantidades por producto (en el orden del catálogo) y las carga en la tabla.
+- PRIMERA VEZ: Ajustes > Lector > "Marcar zonas del remito". Arrastrá los rectángulos sobre una foto
+  (N° de remito, fecha, columna CANTIDAD, OC). Se hace una sola vez; se guarda.
+- APRENDIZAJE (refuerzo): cada remito que confirmás enseña al sistema qué método de lectura anda mejor
+  con tus fotos y reentrena la capa final del reconocedor de dígitos. Los errores bajan con el uso.
+  Ajustes permite exportar/importar el aprendizaje (JSON) para pasarlo de un dispositivo a otro, o reiniciarlo.
+- Límites: medido solo con remitos sintéticos; las fotos reales pueden necesitar marcar bien las zonas.
+  Revisá siempre lo amarillo/rojo antes de confirmar.
+- El puente de Google (INSTRUCCIONES-PUENTE.txt) NO cambió.
+
 
 QUÉ HACE
 - Cámara en vivo con recuadro verde sobre la hoja; al sacar la foto, la hoja se recorta y se endereza sola.
