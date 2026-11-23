@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "8.3";
+  const APP_VERSION = "8.4";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 
@@ -20,7 +20,7 @@
     "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE",
     "SANDWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
   ];
-  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n") };
+  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n"), lecturaPreguntar: true };
   let settings = { ...DEFAULTS };
   let stream = null;
   let stillOk = null;               // null = sin probar; true/false = se puede / no se puede la foto de máxima resolución
@@ -627,6 +627,7 @@
         ? "Guardado ✔ Está en “PDF guardados”: completá la tabla de recepciones cuando quieras, desde acá o desde la computadora."
         : "Guardado en este dispositivo ✔ " + (r.reason || ""));
       if (!r.cloud && r.reason) await showMessage("El PDF quedó guardado en este dispositivo, pero no se pudo subir a tu cuenta:\n\n" + r.reason + "\n\nSe vuelve a intentar solo; también podés tocar “Subir” en la lista.");
+      if (window.Lotes.offerReading) window.Lotes.offerReading(r.id).catch((e) => console.warn("Lectura con el iPhone:", e));
     } catch (e) {
       console.error(e);
       setSaving(false);
@@ -691,6 +692,7 @@
   settingsBtn.addEventListener("click", () => {
     catalogInput.value = settings.catalog;
     hiResChk.checked = !!settings.hiRes;
+    $("lecturaChk").checked = settings.lecturaPreguntar !== false;
     $("bridgeUrl").value = settings.bridgeUrl || "";
     $("bridgeKey").value = settings.bridgeKey || "";
     $("bridgeMsg").textContent = ""; $("bridgeMsg").className = "bridge-msg";
@@ -700,6 +702,7 @@
   $("saveSettings").addEventListener("click", () => {
     settings.catalog = catalogInput.value;
     settings.hiRes = hiResChk.checked;
+    settings.lecturaPreguntar = $("lecturaChk").checked;
     settings.bridgeUrl = $("bridgeUrl").value.trim();
     settings.bridgeKey = $("bridgeKey").value.trim();
     persistSettings();

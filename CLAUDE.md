@@ -55,7 +55,7 @@ There are two kinds of modules.
 
 - **Pure, DOM-free modules**, wrapped as `(function (root) { ... })(typeof self !== "undefined" ? self : this)`:
   - Ending: `if (typeof module === "object" && module.exports) module.exports = api; else root.X = api;`
-  - Global names: `Crop`, `Enhance`, `Period`, `PdfCrypt`, `PdfText`, `OcParse`, `FactParse`, `Xlsx`, `Despachos`, `buildPdf`.
+  - Global names: `Crop`, `Enhance`, `Period`, `PdfCrypt`, `PdfText`, `OcParse`, `FactParse`, `Xlsx`, `Despachos`, `buildPdf`, `Lectura`.
   - Dependencies between them use `require` in Node and `root.X` in the browser. For example, `despachos.js` and `factparse.js` depend on `OcParse`.
 - **UI controllers**, as arrow IIFEs that touch the DOM:
   - `scanner.js` owns the Remitos tab: camera, capture, crop, enhance, the current batch of thumbnails, settings, the bridge call and PDF assembly. It exposes `window.RemitosApp`: `settings()`, `pages()`, `catalog()`, `setActive(on)`, `askConfirm`, `showMessage`, `setStatus`, `bridgeReady`, `sendToBridge`, `makePdf`, `downloadBlob`.
@@ -84,6 +84,19 @@ There are two kinds of modules.
 - Without a signed-in, approved account (unconfigured Firebase), lotes stay local only.
 
 The automatic handwriting reader (v8.0–8.2: `lector.js`, `digits-core.js`, `digits-model.js`, `rl.js`) was removed in v8.3 at the owner's request. It is in git history before the v8.3 commit if it is ever needed.
+
+### Reading quantities with the iPhone (v8.4)
+
+Web pages can't call iOS Live Text, so an iOS Shortcut named **"LAG Cantidades"** acts as the bridge. The owner builds it once by hand; the steps are in the in-app help dialog `#lecHelpDialog`. It takes Share Sheet images, runs "Extract Text from Image" and copies the result to the clipboard.
+
+1. In the lote dialog, `lotes.js` builds a "hoja de lectura". It decodes each page, runs `Lectura.findRows` to find the printed table lines (tolerant to slight tilt), and keeps only rows with ink (`inkRatio`). It stacks those rows with printed labels (`HOJA n`, `Rnn =`) and blanks out the vertical table rules. A page whose table isn't found is added whole, as `HOJA n COMPLETA`.
+2. It shares that image via `navigator.share({ files })` with only files, so the Shortcut receives a pure image input.
+3. "Pegar lectura" calls `navigator.clipboard.readText()`, with a textarea fallback.
+4. `Lectura.parse` handles labels split across lines, fixes confusable characters (`l2O` → 120) and skips "OC ####" notes.
+5. `Lectura.match` fuzzy-matches each description to the catalog. Learned aliases are stored in localStorage `lecturaAlias`.
+6. The sums go into the table as `a+b`. The reading is saved in `tabla.leido = { fecha, filas: [{h, r, q, d, p}], aplicados }`, so no rules change was needed. Applied inputs get the `.leido` highlight.
+
+This is gated to iOS with Web Share file support (`LEC_OK`). On other devices only the saved reading is shown, for review. After "Guardar PDF", `Lotes.offerReading` asks to read right away; the `settings.lecturaPreguntar` setting turns that off. In tests, mock `navigator.share`/`canShare`/`clipboard` and use the iPhone device profile.
 
 ### Persistence
 

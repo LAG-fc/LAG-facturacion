@@ -753,3 +753,45 @@ dialog.lot-dlg[open] { display: flex; flex-direction: column; }
   #lotDelete { padding: 9px 12px; }
   .lot-period .seg { width: 100%; }
 }
+
+/* =====================================================================
+   v8.4 — Cantidades con el iPhone (Atajo «LAG Cantidades»)
+   ===================================================================== */
+.lec { margin-top: 12px; border: 1px solid #ecd9a8; background: linear-gradient(#fffaf0, #fffdf8); border-radius: 12px; padding: 10px 12px 12px; }
+.lec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lec-head strong { display: flex; align-items: center; gap: 7px; font-size: 14px; color: #6b4a00; }
+.lec-head .i { color: #b07a00; }
+.lec-tools { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.lec-tools .btn { flex: 1 1 140px; }
+.lec-text { width: 100%; margin-top: 8px; font-size: 16px; }
+.lec-msg { margin: 8px 0 0; min-height: 0; }
+.lec-msg:empty { display: none; }
+.lec-det { margin-top: 8px; }
+.lec-summary { margin: 0 0 6px; font-size: 12.5px; font-weight: 600; color: #6b4a00; cursor: pointer; list-style: none; display: flex; gap: 6px; align-items: center; }
+.lec-summary::-webkit-details-marker { display: none; }
+.lec-summary::before { content: "›"; font-size: 17px; line-height: 1; transition: transform .15s; color: #b07a00; }
+.lec-det[open] > .lec-summary::before { transform: rotate(90deg); }
+.lec-rows { display: flex; flex-direction: column; gap: 6px; }
+.lec-row { display: grid; grid-template-columns: 58px 88px minmax(0, 1fr); gap: 6px 8px; align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; }
+.lec-row.warn { border-color: #e9b949; background: #fffbef; }
+.lec-row.off { opacity: .6; }
+.lec-pos { font-size: 11.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lec-q { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; padding: 6px 8px; width: 100%; }
+.lec-q.bad { border-color: var(--danger); background: #fdf1f0; }
+.lec-p { width: 100%; min-width: 0; padding: 6px 8px; font-size: 13px; }
+.lec-row.warn .lec-p { border-color: #e9b949; }
+.lec-d { grid-column: 2 / -1; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; margin-top: -2px; }
+.lec-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
+.tt-row input.q.leido { background: #fff5cc; border-color: #e0b43a; }
+.btn.pulse { animation: lecPulse 1.2s ease-in-out infinite; box-shadow: 0 0 0 0 rgba(116, 20, 32, .45); }
+@keyframes lecPulse { 0% { box-shadow: 0 0 0 0 rgba(116, 20, 32, .45); } 70% { box-shadow: 0 0 0 10px rgba(116, 20, 32, 0); } 100% { box-shadow: 0 0 0 0 rgba(116, 20, 32, 0); } }
+dialog.help-dlg { width: min(600px, calc(100vw - 20px)); }
+.help-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.help-steps { margin: 10px 0 4px; padding-left: 22px; font-size: 14px; line-height: 1.5; }
+.help-steps li { margin-bottom: 7px; }
+.help-steps small { color: var(--muted); }
+.help-sub { margin: 14px 0 0; font-weight: 700; color: var(--wine); }
+@media (max-width: 640px) {
+  .lec-row { grid-template-columns: 50px 78px minmax(0, 1fr); }
+  .help-steps { font-size: 13.5px; }
+}

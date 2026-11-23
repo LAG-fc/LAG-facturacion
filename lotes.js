@@ -3,9 +3,11 @@
 // usuario: se ve desde el celular y desde la computadora). Al abrir un lote se ven las fotos de los remitos junto a la
 // tabla de recepciones; cuando la tabla está completa (OC y cantidades), aparece la opción de enviarlo al borrador
 // de Gmail (puente de Google). El almacenamiento está en lotes-store.js.
+// v8.4: en el iPhone, "Leer cantidades" arma una hoja con los renglones de los remitos (lectura.js), la comparte con el
+// Atajo "LAG Cantidades" (que usa el reconocimiento de texto del iPhone) y pasa a la tabla lo que el Atajo copió.
 (() => {
   "use strict";
-  const A = window.RemitosApp, S = window.LotesStore, P = window.Period, $ = (id) => document.getElementById(id);
+  const A = window.RemitosApp, S = window.LotesStore, P = window.Period, L = window.Lectura, $ = (id) => document.getElementById(id);
   if (!A || !S || !P) { console.warn("PDF guardados: faltan archivos (scanner.js, lotes-store.js o period.js)."); return; }
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const ICON = (n) => '<svg class="i"><use href="#i-' + n + '"/></svg>';
@@ -148,12 +150,16 @@
       else extras.push({ nombre: String(v.nombre), texto: String(v.texto || "") });
     });
     (Array.isArray(t.extras) ? t.extras : []).forEach((x) => { if (x) extras.push({ nombre: String(x.nombre || ""), texto: String(x.texto || "") }); });
-    return { oc: P.cleanOc(t.oc || ""), values, extras };
+    const le = t.leido && Array.isArray(t.leido.filas) ? t.leido : null;
+    const leido = le ? { fecha: le.fecha || 0, filas: le.filas.map((f) => ({ h: f.h || 0, r: f.r == null ? null : f.r, q: String(f.q || ""), d: String(f.d || ""), p: String(f.p || "") })), aplicados: Array.isArray(le.aplicados) ? le.aplicados.slice() : [] } : null;
+    return { oc: P.cleanOc(t.oc || ""), values, extras, leido };
   }
   function fromWork() {
     const valores = A.catalog().filter((n) => String(work.values[n] || "").trim()).map((n) => ({ nombre: n, texto: String(work.values[n]).trim() }));
     const extras = work.extras.filter((x) => String(x.nombre || "").trim() || String(x.texto || "").trim()).map((x) => ({ nombre: String(x.nombre || "").trim(), texto: String(x.texto || "").trim() }));
-    return { oc: work.oc, valores, extras };
+    const out = { oc: work.oc, valores, extras };
+    if (work.leido) out.leido = { fecha: work.leido.fecha, filas: work.leido.filas.map((f) => ({ h: f.h, r: f.r, q: f.q, d: f.d, p: f.p })), aplicados: work.leido.aplicados.slice() };
+    return out;
   }
   const snapshot = () => JSON.stringify({ t: fromWork(), m: mode });
   const dirty = () => !!(cur && work && snapshot() !== orig);
@@ -214,7 +220,8 @@
       const row = document.createElement("div"); row.className = "tt-row";
       const n = document.createElement("div"); n.className = "n"; n.textContent = i + 1;
       const nm = document.createElement("div"); nm.className = "name"; nm.textContent = name;
-      const inp = qtyInput(() => work.values[name] || "", (v) => { work.values[name] = v; });
+      const inp = qtyInput(() => work.values[name] || "", (v) => { work.values[name] = v; unmarkRead(name, inp); });
+      if (work.leido && work.leido.aplicados.includes(name)) { inp.classList.add("leido"); inp.title = "Leído con el iPhone: revisalo con la foto"; }
       row.append(n, nm, inp); calcLabel(row, inp); rowsEl.appendChild(row);
     });
     work.extras.forEach((x, i) => {
@@ -226,6 +233,10 @@
       const inp = qtyInput(() => x.texto || "", (v) => { x.texto = v; });
       row.append(rm, nm, inp); calcLabel(row, inp); rowsEl.appendChild(row);
     });
+  }
+  function unmarkRead(name, inp) {
+    if (!inp.classList.contains("leido")) return;
+    inp.classList.remove("leido"); inp.removeAttribute("title");
   }
   $("lotAddExtra").addEventListener("click", () => {
     work.extras.push({ nombre: "", texto: "" }); buildRows();
@@ -303,6 +314,7 @@
       }));
       viewerMsg("");
       show(0);
+      prepareSheet(it, f);
       return f;
     } catch (e) {
       if (seq !== loadSeq) return null;
@@ -323,6 +335,264 @@
     if (e.key === "ArrowRight") { e.preventDefault(); show(idx + 1); }
   });
 
+
+  // ---------------------------------------------------------------- lectura con el iPhone (Atajo "LAG Cantidades")
+  const IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  function canShareImages() {
+    try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [new File([new Uint8Array([255, 216, 255, 217])], "x.jpg", { type: "image/jpeg" })] })); }
+    catch (e) { return false; }
+  }
+  const LEC_OK = !!L && IOS && canShareImages();
+  const lecBox = $("lecBox"), lecRows = $("lecRows"), lecMsg = $("lecMsg"), lecShare = $("lecShare"), lecPaste = $("lecPaste"), lecText = $("lecText");
+  let sheet = null, sheetId = null, sheetSeq = 0;
+  const ALIAS_KEY = "lecturaAlias";
+  const loadAliases = () => { try { return JSON.parse(localStorage.getItem(ALIAS_KEY) || "{}") || {}; } catch (e) { return {}; } };
+  function saveAlias(desc, name) {
+    const k = L.norm(desc); if (!k || !name || name === "__no") return;
+    const a = loadAliases(); a[k] = name;
+    const keys = Object.keys(a); if (keys.length > 400) keys.slice(0, keys.length - 400).forEach((x) => delete a[x]);
+    try { localStorage.setItem(ALIAS_KEY, JSON.stringify(a)); } catch (e) { /* nada */ }
+  }
+  const pad2 = (n) => String(n).padStart(2, "0");
+
+  // Hoja de lectura: de cada remito, los renglones de la tabla con algo escrito, con etiquetas impresas.
+  async function buildSheet(fotos) {
+    const pages = [];
+    for (let i = 0; i < fotos.length; i++) {
+      const bmp = await createImageBitmap(new Blob([fotos[i].bytes], { type: "image/jpeg" }));
+      const sw = 1000, sh = Math.max(1, Math.round(bmp.height * sw / bmp.width));
+      const c = document.createElement("canvas"); c.width = sw; c.height = sh;
+      const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(bmp, 0, 0, sw, sh);
+      const d = x.getImageData(0, 0, sw, sh).data, g = new Uint8Array(sw * sh);
+      for (let p = 0, k = 0; p < g.length; p++, k += 4) g[p] = (d[k] * 77 + d[k + 1] * 150 + d[k + 2] * 29) >> 8;
+      const t = L.findRows(g, sw, sh);
+      let rows = [];
+      if (t) rows = t.rows.map((r, k) => ({ k: k + 1, r, ink: L.inkRatio(g, sw, sh, { x0: t.x0 * sw + 3, x1: t.x1 * sw - 3, y0: r.y0 * sh + 1, y1: r.y1 * sh - 1 }, t.vlines, t.thr) })).filter((r) => r.ink > 0.0035);
+      pages.push({ bmp, t: rows.length ? t : null, rows });
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    const W = 1800, LBL = 205, CW = W - LBL - 24, GAP = 26, HEAD = 96, FULLW = W - 60;
+    let scale = 1;
+    const layout = () => {
+      let y = 20;
+      pages.forEach((pg) => {
+        pg.y = y; y += HEAD;
+        if (pg.t) pg.rows.forEach((r) => {
+          const cw = (pg.t.x1 - pg.t.x0) * pg.bmp.width, ch = (r.r.y1 - r.r.y0) * pg.bmp.height;
+          r.s = Math.min(1.3, CW / cw) * scale; r.h = Math.max(36, ch * r.s); r.y = y; y += r.h + GAP;
+        });
+        else { pg.fs = (FULLW / pg.bmp.width) * scale; y += pg.bmp.height * pg.fs + GAP; }
+        y += 20;
+      });
+      return y;
+    };
+    let H = layout();
+    while (W * H > 15.5e6 && scale > 0.4) { scale *= 0.85; H = layout(); }   // límite de tamaño de imagen del iPhone
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = Math.ceil(H);
+    const x = cv.getContext("2d");
+    x.fillStyle = "#fff"; x.fillRect(0, 0, W, cv.height);
+    x.fillStyle = "#000"; x.textBaseline = "middle";
+    pages.forEach((pg, i) => {
+      x.font = "bold 54px Helvetica, Arial, sans-serif";
+      x.fillText("HOJA " + (i + 1) + (pg.t ? "" : " COMPLETA"), 24, pg.y + HEAD / 2 - 8);
+      x.fillRect(24, pg.y + HEAD - 18, W - 48, 3);
+      if (pg.t) {
+        const bw = pg.bmp.width, bh = pg.bmp.height, sx = pg.t.x0 * bw;
+        pg.rows.forEach((r) => {
+          const sy = r.r.y0 * bh, sW = (pg.t.x1 - pg.t.x0) * bw, sH = (r.r.y1 - r.r.y0) * bh, dw = sW * r.s;
+          x.font = "bold 50px Helvetica, Arial, sans-serif"; x.textAlign = "right";   // etiqueta pegada al renglón
+          x.fillText("R" + pad2(r.k) + " =", LBL - 10, r.y + r.h / 2); x.textAlign = "left";
+          x.drawImage(pg.bmp, sx, sy, sW, sH, LBL, r.y, dw, r.h);
+          x.fillStyle = "#fff";                                   // se tapan las líneas verticales de la tabla
+          pg.t.vlines.forEach((v) => { const a = LBL + (v.x0 * bw - sx) * r.s - 3, b = LBL + (v.x1 * bw - sx) * r.s + 3; if (b > LBL && a < LBL + dw) x.fillRect(Math.max(LBL, a), r.y, b - Math.max(LBL, a), r.h); });
+          x.fillStyle = "#000";
+        });
+      } else x.drawImage(pg.bmp, 30, pg.y + HEAD, pg.bmp.width * pg.fs, pg.bmp.height * pg.fs);
+      if (pg.bmp.close) pg.bmp.close();
+    });
+    const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.9));
+    return { file: new File([blob], "lag-cantidades.jpg", { type: "image/jpeg" }), rows: pages.reduce((s, p) => s + (p.t ? p.rows.length : 0), 0), full: pages.filter((p) => !p.t).length };
+  }
+  async function prepareSheet(it, fotos) {
+    if (!LEC_OK || !fotos || !fotos.length) return null;
+    if (sheet && sheetId === it.id) { renderLecBox(); return sheet; }
+    const seq = ++sheetSeq;
+    sheet = null; sheetId = null; renderLecBox();
+    try {
+      const s = await buildSheet(fotos);
+      if (seq !== sheetSeq) return null;
+      sheet = s; sheetId = it.id;
+    } catch (e) { console.error("Hoja de lectura:", e); if (seq === sheetSeq) lecMsg.textContent = "No se pudo preparar la lectura: " + (e.message || e); }
+    renderLecBox();
+    return sheet;
+  }
+
+  // Comparte la hoja con el Atajo. Devuelve true si se compartió.
+  async function shareSheet() {
+    if (!sheet) return false;
+    try { await navigator.share({ files: [sheet.file] }); }
+    catch (e) {
+      if (e && e.name === "AbortError") return false;
+      lecMsg.textContent = "No se pudo abrir la hoja para compartir (" + ((e && e.message) || e) + "). Probá de nuevo.";
+      return false;
+    }
+    lecWaiting = true; renderLecBox();
+    return true;
+  }
+  let lecWaiting = false;
+  lecShare.addEventListener("click", shareSheet);
+
+  // Pegar lo que copió el Atajo
+  lecPaste.addEventListener("click", async () => {
+    let text = "";
+    try { text = navigator.clipboard && navigator.clipboard.readText ? await navigator.clipboard.readText() : ""; }
+    catch (e) { text = ""; }
+    if (!text) { lecText.hidden = false; lecText.value = ""; lecText.focus(); lecMsg.textContent = "Mantené apretado el recuadro y tocá «Pegar»."; return; }
+    handleText(text);
+  });
+  lecText.addEventListener("paste", (e) => { const t = e.clipboardData && e.clipboardData.getData("text"); if (t) { e.preventDefault(); lecText.value = t; handleText(t); } });
+  lecText.addEventListener("input", () => { clearTimeout(lecText._t); lecText._t = setTimeout(() => { if (lecText.value.trim()) handleText(lecText.value); }, 700); });
+
+  async function handleText(text) {
+    const read = L.parse(text).filter((r) => r.qty !== null && !r.oc);
+    if (!read.length) {
+      lecMsg.textContent = "No encontré cantidades en lo que copiaste. Tocá «Leer cantidades», elegí «LAG Cantidades» y después «Pegar lectura».";
+      return;
+    }
+    lecText.hidden = true; lecWaiting = false;
+    const cat = A.catalog(), aliases = loadAliases();
+    const filas = read.map((r) => {
+      const m = L.match(r.desc, cat, aliases);
+      return { h: r.hoja, r: r.renglon, q: r.qtyText, d: r.desc, p: m.name || (r.qty > 5000 ? "__no" : ""), alts: m.alts };
+    });
+    work.leido = { fecha: Date.now(), filas, aplicados: [] };
+    $("lecDet").open = true;
+    renderLecBox(); fillHead();
+    try { lecBox.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) { /* nada */ }
+    const pending = filas.filter((f) => !f.p).length;
+    const clash = filas.some((f) => f.p && f.p !== "__no" && String(work.values[f.p] || "").trim());
+    if (!pending && !clash) await applyReading(true);
+    else lecMsg.textContent = pending ? "Elegí el producto de los renglones marcados y tocá «Pasar a la tabla»." : "La tabla ya tenía cantidades: revisá y tocá «Pasar a la tabla» para reemplazarlas.";
+  }
+
+  function renderLecBox() {
+    if (!cur || !work) return;
+    const le = work.leido, show = LEC_OK || !!le;
+    lecBox.hidden = !show;
+    if (!show) return;
+    $("lecTools").hidden = !LEC_OK;
+    lecShare.disabled = !sheet || busy;
+    lecShare.lastChild.textContent = sheet ? "Leer cantidades" : "Preparando…";
+    lecShare.classList.toggle("is-busy", !sheet);
+    lecPaste.classList.toggle("pulse", lecWaiting);
+    const cat = A.catalog();
+    lecRows.replaceChildren();
+    if (le) {
+      const sin = le.filas.filter((f) => !f.p).length;
+      $("lecSummary").textContent = "Leído el " + fmtDay(le.fecha) + " a las " + fmtTime(le.fecha) + " · " + le.filas.length + (le.filas.length === 1 ? " renglón" : " renglones") +
+        (sin ? " · " + sin + " sin producto" : "") + (le.aplicados.length ? " · ✓ en la tabla" : "");
+      le.filas.forEach((f) => {
+        const row = document.createElement("div");
+        row.className = "lec-row" + (!f.p ? " warn" : f.p === "__no" ? " off" : "");
+        const pos = document.createElement("span"); pos.className = "lec-pos"; pos.textContent = "H" + f.h + (f.r ? "·R" + f.r : "");
+        const q = document.createElement("input"); q.type = "text"; q.inputMode = "decimal"; q.className = "lec-q"; q.value = f.q;
+        q.addEventListener("input", () => { f.q = q.value; q.classList.toggle("bad", parseQty(q.value).ok === false); fillHead(); });
+        const sel = document.createElement("select"); sel.className = "lec-p";
+        const opts = ['<option value="">— elegí el producto —</option>'];
+        const alts = (f.alts || []).filter((n) => cat.includes(n));
+        if (alts.length) opts.push('<optgroup label="Parecidos">' + alts.map((n) => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("") + "</optgroup>");
+        opts.push('<optgroup label="Todos">' + cat.map((n) => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("") + "</optgroup>");
+        opts.push('<option value="__no">No sumar este renglón</option>');
+        sel.innerHTML = opts.join("");
+        if (f.p && f.p !== "__no" && !cat.includes(f.p)) { const o = document.createElement("option"); o.value = f.p; o.textContent = f.p; sel.insertBefore(o, sel.options[1]); }
+        sel.value = f.p || "";
+        sel.addEventListener("change", () => {
+          f.p = sel.value; if (f.p && f.d) saveAlias(f.d, f.p);
+          row.className = "lec-row" + (!f.p ? " warn" : f.p === "__no" ? " off" : "");
+          renderLecSummaryOnly(); fillHead();
+        });
+        const d = document.createElement("small"); d.className = "lec-d"; d.textContent = f.d ? "“" + f.d + "”" : "(sin descripción)";
+        row.append(pos, q, sel, d);
+        lecRows.appendChild(row);
+      });
+    } else $("lecSummary").textContent = "";
+    $("lecDet").hidden = !le;
+    $("lecApply").lastChild.textContent = le && le.aplicados.length ? "Volver a pasar a la tabla" : "Pasar a la tabla";
+    // mensajes de estado (cuando ya hay una lectura, los escriben handleText / applyReading)
+    if (!le && LEC_OK) lecMsg.textContent = lecWaiting ? "Listo. Ahora tocá «Pegar lectura» y después «Pegar»." : (sheet ? (sheet.rows ? "Se van a leer " + sheet.rows + (sheet.rows === 1 ? " renglón" : " renglones") + (sheet.full ? " y " + sheet.full + " hoja(s) completa(s)" : "") + "." : "No encontré la tabla en las fotos: se van a leer las hojas completas.") : "");
+  }
+  function renderLecSummaryOnly() {
+    const le = work && work.leido; if (!le) return;
+    const sin = le.filas.filter((f) => !f.p).length;
+    $("lecSummary").textContent = "Leído el " + fmtDay(le.fecha) + " a las " + fmtTime(le.fecha) + " · " + le.filas.length + (le.filas.length === 1 ? " renglón" : " renglones") + (sin ? " · " + sin + " sin producto" : "") + (le.aplicados.length ? " · ✓ en la tabla" : "");
+  }
+
+  // Suma lo leído por producto y lo pasa a la tabla (como "120+45"). auto = sin preguntas.
+  async function applyReading(auto) {
+    const le = work && work.leido; if (!le) return;
+    const sums = {}, cat = A.catalog();
+    for (const f of le.filas) {
+      if (!f.p || f.p === "__no") continue;
+      const q = parseQty(f.q);
+      if (!q.ok) { lecMsg.textContent = "Revisá la cantidad «" + f.q + "» (H" + f.h + (f.r ? "·R" + f.r : "") + ")."; return; }
+      (sums[f.p] = sums[f.p] || []).push(formatQty(q.value));
+    }
+    const names = Object.keys(sums);
+    if (!names.length) { lecMsg.textContent = "Elegí el producto de al menos un renglón."; return; }
+    if (!auto) {
+      const sin = le.filas.filter((f) => !f.p).length;
+      const clash = names.filter((n) => !le.aplicados.includes(n) && String(cat.includes(n) ? work.values[n] || "" : "").trim());
+      const parts = [];
+      if (sin) parts.push(sin + (sin === 1 ? " renglón no tiene" : " renglones no tienen") + " producto y no se va" + (sin === 1 ? "" : "n") + " a sumar.");
+      if (clash.length) parts.push("Se reemplazan las cantidades que ya estaban cargadas en: " + clash.join(", ") + ".");
+      if (parts.length && !(await A.askConfirm(parts.join("\n\n") + "\n\n¿Pasar la lectura a la tabla?", "Pasar a la tabla", "Volver"))) return;
+    }
+    le.aplicados.forEach((n) => { if (!sums[n] && cat.includes(n)) work.values[n] = ""; });   // lectura anterior
+    work.extras = work.extras.filter((x) => !le.aplicados.includes(x.nombre) || sums[x.nombre]);
+    names.forEach((n) => {
+      const text = sums[n].join("+");
+      if (cat.includes(n)) work.values[n] = text;
+      else { const ex = work.extras.find((x) => x.nombre === n); if (ex) ex.texto = text; else work.extras.push({ nombre: n, texto: text }); }
+    });
+    le.aplicados = names;
+    buildRows(); renderLecBox();
+    const rows = await saveTable({ force: true });
+    if (rows) {
+      $("lecDet").open = false;
+      lecMsg.textContent = "✓ Cantidades pasadas a la tabla y guardadas. Están resaltadas en amarillo: revisalas con las fotos.";
+      A.setStatus("Lectura del iPhone guardada ✔", 4000);
+    }
+  }
+  $("lecApply").addEventListener("click", () => applyReading(false));
+  $("lecClear").addEventListener("click", async () => {
+    if (!work || !work.leido) return;
+    if (!(await A.askConfirm("¿Descartar la lectura del iPhone? Las cantidades que ya pasaste a la tabla quedan como están.", "Descartar", "Cancelar"))) return;
+    work.leido = null; renderLecBox(); await saveTable({ force: true }); buildRows();
+  });
+  const openHelp = () => $("lecHelpDialog").showModal();
+  $("lecHelp").addEventListener("click", openHelp);
+  $("lecHelpClose").addEventListener("click", () => $("lecHelpDialog").close());
+  $("lecHelpOk").addEventListener("click", () => $("lecHelpDialog").close());
+  const helpBtn = $("lecHelpSettings"); if (helpBtn) helpBtn.addEventListener("click", openHelp);
+
+  // Después de "Guardar PDF" en el iPhone: ofrecer leer las cantidades enseguida.
+  async function offerReading(id) {
+    if (!LEC_OK || A.settings().lecturaPreguntar === false) return;
+    let it = items.find((x) => x.id === id);
+    if (!it) { await refresh(); it = items.find((x) => x.id === id); }
+    const fotos = cache.get(id);
+    if (!it || !fotos) return;
+    A.setStatus("Preparando la lectura de cantidades…", 0);
+    const tmp = { id };
+    const s = await prepareSheet(tmp, fotos);
+    A.setStatus("", 1);
+    if (!s) return;
+    if (!(await A.askConfirm("¿Leer ahora las cantidades con el iPhone?\n\nSe abre la hoja para compartir: elegí «LAG Cantidades».", "Leer ahora", "Más tarde"))) return;
+    const shared = await shareSheet();
+    await openLote(it, { reading: true });
+    if (shared) { lecWaiting = true; renderLecBox(); try { lecBox.scrollIntoView({ block: "center" }); } catch (e) { /* nada */ } }
+  }
+
   // ---------------------------------------------------------------- abrir / cerrar
   async function openLote(it, opts = {}) {
     if (dlg.open) { if (!(await closeLote())) return; }
@@ -331,9 +601,13 @@
     orig = snapshot();
     ocEl.value = work.oc; ocEl.classList.remove("bad"); errEl.textContent = "";
     stage.classList.remove("zoom"); $("lvZoom").setAttribute("aria-pressed", "false");
-    buildRows(); refreshPeriodInfo(); setBusy(false);
+    if (!opts.reading) { lecWaiting = false; }
+    lecMsg.textContent = ""; lecText.hidden = true;
+    if (sheetId !== it.id) { sheet = null; sheetId = null; }
+    $("lecDet").open = !!(work.leido && (!work.leido.aplicados.length || work.leido.filas.some((f) => !f.p)));
+    buildRows(); refreshPeriodInfo(); setBusy(false); renderLecBox();
     dlg.showModal();
-    rowsEl.scrollTop = 0;
+    rowsEl.scrollTop = 0; $("lotForm").scrollTop = 0;
     const p = loadShots(it);
     if (opts.send) { await p; if (cur === it && dlg.open) sendCurrent(); }
     else if (window.matchMedia && matchMedia("(pointer: fine)").matches) { const f = work.oc ? rowsEl.querySelector("input.q") : ocEl; if (f) f.focus(); }
@@ -345,9 +619,9 @@
       const save = await A.askConfirm("Hay cambios sin guardar en la tabla de recepciones. ¿Guardarlos?", "Guardar", "Descartar");
       if (save && !(await saveTable())) return false;
     }
-    loadSeq++; releaseUrls(); img.removeAttribute("src");
+    loadSeq++; sheetSeq++; releaseUrls(); img.removeAttribute("src");
     if (dlg.open) dlg.close();
-    cur = null; work = null;
+    cur = null; work = null; lecWaiting = false;
     return true;
   }
   $("lotClose").addEventListener("click", () => closeLote());
@@ -355,7 +629,7 @@
 
   function setBusy(on, text) {
     busy = on;
-    ["lotSend", "lotSave", "lotDownload", "lotDelete", "lotClose"].forEach((id) => { $(id).disabled = on; });
+    ["lotSend", "lotSave", "lotDownload", "lotDelete", "lotClose", "lecApply", "lecPaste"].forEach((id) => { $(id).disabled = on; });
     $("lotSend").classList.toggle("is-busy", !!on && text !== undefined && /Enviando|Preparando/.test(text));
     if (on && text) $("lotDest").textContent = text; else if (!on && cur) refreshPeriodInfo();
   }
@@ -470,9 +744,11 @@
   window.Lotes = {
     async saveBatch(list, periodo, onProgress) {
       const r = await S.save(list, periodo, onProgress);
-      refresh();
+      if (r.fotos) { cache.set(r.id, r.fotos); while (cache.size > 2) cache.delete(cache.keys().next().value); delete r.fotos; }
+      await refresh();
       return r;
     },
+    offerReading,
     refresh
   };
 })();

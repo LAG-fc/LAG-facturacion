@@ -230,7 +230,7 @@
       try { await local.putAll(rec, fotos); } catch (e) { console.warn("No se pudo guardar en el dispositivo:", e); savedLocal = false; }
       if (!c) {
         if (!savedLocal) throw new Error("No hay espacio para guardar en este dispositivo.");
-        emit(); return { id: rec.id, cloud: false, reason: "" };
+        emit(); return { id: rec.id, cloud: false, reason: "", fotos };
       }
       if (!savedLocal) {                 // sin almacenamiento local (por ejemplo, navegación privada): se sube directo
         const meta = Object.assign({}, rec, { subido: false });
@@ -238,11 +238,11 @@
           await remote.put(c, meta);
           const partes = await remote.putFotos(c, rec.id, fotos, onProgress);
           await remote.update(c, rec.id, { subido: true, partes, actualizado: Date.now() });
-          emit(); return { id: rec.id, cloud: true };
+          emit(); return { id: rec.id, cloud: true, fotos };
         } catch (e) { throw new Error(describe(e)); }
       }
-      try { await upload(rec.id, onProgress); return { id: rec.id, cloud: true }; }
-      catch (e) { emit(); return { id: rec.id, cloud: false, reason: describe(e) }; }
+      try { await upload(rec.id, onProgress); return { id: rec.id, cloud: true, fotos }; }
+      catch (e) { emit(); return { id: rec.id, cloud: false, reason: describe(e), fotos }; }
     },
 
     // Fotos de un lote: [{bytes (JPEG), w, h}]

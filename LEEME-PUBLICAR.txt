@@ -1,5 +1,26 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.3
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.4
 =======================================================
+
+NOVEDADES v8.4 · CANTIDADES LEÍDAS CON EL IPHONE (Atajo «LAG Cantidades»)
+- El iPhone lee muy bien la letra a mano, pero una página web no puede usar ese lector directamente. Por eso se usa
+  un Atajo del iPhone como puente. Se crea UNA SOLA VEZ (Ajustes de la página > "Cómo crear el Atajo «LAG Cantidades»",
+  o el enlace "¿Cómo se configura?" dentro de cada PDF guardado):
+    1. App Atajos > + > nombre: LAG Cantidades
+    2. Acción "Extraer texto de la imagen" con la "Entrada del atajo"
+    3. Recibir solo Imágenes desde la Hoja para compartir
+    4. Acción "Copiar al portapapeles"
+- Uso: después de "Guardar PDF" la página pregunta "¿Leer ahora las cantidades?" → "Leer ahora" → en la hoja para
+  compartir elegí "LAG Cantidades" → "Pegar lectura" → "Pegar". Son 4 toques: Apple no permite menos.
+  También se puede hacer más tarde: abrí el PDF guardado y tocá "Leer cantidades".
+- La página arma sola una hoja con los renglones escritos de cada remito (detecta las líneas de la tabla), el iPhone
+  la lee, y la página reconoce cantidad y producto de cada renglón y los suma en la tabla de recepciones
+  (por ejemplo 120+45). Lo leído queda resaltado en amarillo para revisarlo con las fotos, y se guarda en la cuenta:
+  se puede revisar o corregir desde la computadora.
+- Si un renglón no tiene un producto claro, se elige de una lista y la página lo recuerda para la próxima vez.
+  Las anotaciones "OC 93035" se ignoran.
+- NO hace falta volver a publicar las reglas de Firestore (las de la v8.3 sirven).
+- ARCHIVOS NUEVOS: lectura.js. CAMBIARON: index.html, styles.css, lotes.js, lotes-store.js, scanner.js, sw.js.
+
 
 NOVEDADES v8.3 · PDF GUARDADOS EN TU CUENTA (celular → computadora) Y SECCIÓN REMITOS MÁS SIMPLE
 - ⚠ OBLIGATORIO (una sola vez): volver a publicar las reglas de Firestore. Firebase > Firestore Database > Reglas >
