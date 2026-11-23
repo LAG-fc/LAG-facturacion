@@ -1,19 +1,17 @@
 (() => {
   "use strict";
-  const APP_VERSION = "8.2";
+  const APP_VERSION = "8.3";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 
   const video = $("video"), overlay = $("overlay"), videoWrap = $("videoWrap"), detectPill = $("detectPill");
   const cameraSelect = $("cameraSelect"), filterSelect = $("filterSelect"), autoCropChk = $("autoCrop");
   const captureBtn = $("captureBtn"), captureLabel = $("captureLabel"), uploadBtn = $("uploadBtn"), fileInput = $("fileInput");
-  const saveBtn = $("saveBtn"), clearBtn = $("clearBtn"), settingsBtn = $("settingsBtn"), totalsBtn = $("totalsBtn");
+  const saveBtn = $("saveBtn"), saveLabel = $("saveLabel"), clearBtn = $("clearBtn"), settingsBtn = $("settingsBtn");
   const thumbs = $("thumbs"), countEl = $("count"), emptyEl = $("empty"), pagesPanel = $("pagesPanel");
-  const statusEl = $("status"), cameraMsg = $("cameraMsg"), flash = $("flash"), totalsInfo = $("totalsInfo");
+  const statusEl = $("status"), cameraMsg = $("cameraMsg"), flash = $("flash");
   const settingsDialog = $("settingsDialog"), catalogInput = $("catalogInput"), hiResChk = $("hiResChk");
   const msgDialog = $("msgDialog"), msgText = $("msgText"), msgOk = $("msgOk"), msgCancel = $("msgCancel");
-  const totalsDialog = $("totalsDialog"), totalsForm = $("totalsForm"), totalsRows = $("totalsRows"), totalsErr = $("totalsErr");
-  const totalsOk = $("totalsOk"), ocField = $("ocField"), ocInput = $("ocInput"), totalsHint = $("totalsHint");
   const previewDialog = $("previewDialog"), previewImg = $("previewImg");
 
   const DEFAULT_CATALOG = [
@@ -22,7 +20,7 @@
     "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE",
     "SANDWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
   ];
-  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n"), lector: true, zones: null };
+  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n") };
   let settings = { ...DEFAULTS };
   let stream = null;
   let stillOk = null;               // null = sin probar; true/false = se puede / no se puede la foto de máxima resolución
@@ -31,6 +29,7 @@
   let epoch = 0;                    // sube cada vez que se vacía todo: lo que estaba en proceso se descarta
   let grabbing = false;
   let suspended = false;            // true mientras se está en la sección "Órdenes de compra": la cámara queda apagada
+  let saving = false;               // true mientras se guardan las fotos como "PDF guardado"
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const toBlob = (canvas, q = 0.9) => new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
@@ -40,8 +39,8 @@
   function loadSettings() {
     try {
       const st = { ...DEFAULTS, ...JSON.parse(localStorage.getItem("settings") || "{}") };
-      ["apiKey", "sensitivity", "decimals", "catalogVersion"].forEach((k) => delete st[k]);   // restos de versiones anteriores
-      localStorage.removeItem("visionUsage");
+      ["apiKey", "sensitivity", "decimals", "catalogVersion", "lector", "zones"].forEach((k) => delete st[k]);   // restos de versiones anteriores
+      ["visionUsage", "rlV8", "despDia", "totals"].forEach((k) => localStorage.removeItem(k));          // lector de remitos (v8.0-8.2) y tabla suelta
       return st;
     } catch (e) { return { ...DEFAULTS }; }
   }
@@ -366,7 +365,6 @@
           p.blob = r.blob; p.w = r.w; p.h = r.h; p.cropped = r.cropped;
           p.url = URL.createObjectURL(r.blob); p.thumbUrl = URL.createObjectURL(r.thumb);
           p.status = "ok";
-          if (window.RemitosApp && window.RemitosApp.onPageReady) { try { window.RemitosApp.onPageReady(p); } catch (e2) { console.warn(e2); } }
         } catch (e) {
           console.error("No se pudo procesar la foto:", e);
           if (pages.includes(job.page)) job.page.status = "error";
@@ -488,7 +486,7 @@
     c = document.createElement("div");
     c.className = "thumb";
     c.innerHTML =
-      '<div class="imgbox"><img alt=""><span class="num"></span><span class="rd" hidden></span><div class="state"></div></div>' +
+      '<div class="imgbox"><img alt=""><span class="num"></span><div class="state"></div></div>' +
       '<div class="tools"><button type="button" class="rot" title="Girar 90°">' + ICON("rotate") + 'Girar</button>' +
       '<button type="button" class="del" title="Eliminar">' + ICON("trash") + 'Quitar</button></div>';
     c.querySelector(".imgbox").addEventListener("click", () => { if (page.status === "ok" && page.url) openPreview(page); });
@@ -510,8 +508,6 @@
     else if (page.status === "error") { st.hidden = false; st.innerHTML = "<span>No se pudo procesar.<br>Quitala y probá de nuevo.</span>"; }
     else st.hidden = true;
     c.querySelector(".rot").disabled = page.status !== "ok" || !!page.busy;
-    const rd = c.querySelector(".rd");
-    rd.hidden = !page.readLabel; rd.textContent = page.readLabel || ""; rd.className = "rd " + (page.readClass || "");
   }
 
   function syncCards() {
@@ -525,16 +521,14 @@
     countEl.textContent = pages.length;
     emptyEl.hidden = pages.length > 0;
     thumbs.hidden = pages.length === 0;
-    saveBtn.disabled = pages.length === 0;
-    clearBtn.disabled = pages.length === 0 && !totalsFilledCount();
-    updateTotalsInfo();
-    if (window.RemitosApp && window.RemitosApp.onSync) { try { window.RemitosApp.onSync(); } catch (e) { /* nada */ } }
+    saveBtn.disabled = pages.length === 0 || saving;
+    clearBtn.disabled = pages.length === 0 || saving;
   }
 
   function releasePage(p) {
     if (p.url) URL.revokeObjectURL(p.url);
     if (p.thumbUrl) URL.revokeObjectURL(p.thumbUrl);
-    p.url = p.thumbUrl = ""; p.blob = null; p.read = null;
+    p.url = p.thumbUrl = ""; p.blob = null;
   }
 
   function removePage(p) {
@@ -558,7 +552,7 @@
       p.url = URL.createObjectURL(r.blob); p.thumbUrl = URL.createObjectURL(thumb);
     } catch (e) { console.error(e); setStatus("No se pudo girar la foto.", 4000); }
     p.busy = false;
-    if (myEpoch === epoch) { syncCards(); if (window.RemitosApp && window.RemitosApp.onPageReady) { p.read = null; try { window.RemitosApp.onPageReady(p); } catch (e2) { console.warn(e2); } } }
+    if (myEpoch === epoch) syncCards();
   }
 
   function openPreview(p) {
@@ -568,97 +562,34 @@
   $("previewClose").addEventListener("click", () => previewDialog.close());
   previewDialog.addEventListener("click", (e) => { if (e.target === previewDialog) previewDialog.close(); });
 
-  function clearAll() {
+  function clearAll(msg) {
     epoch++;                                   // lo que estaba procesándose se descarta
     queue.length = 0;
     pages.forEach(releasePage);
     pages = [];
-    totalsState = { values: {}, extras: [], oc: "" };
-    persistTotals();
     grabbing = false;
     resetDragState();
     stable = 0;
     syncCards();
     updateBusyUI();
     ensureCamera();
-    setStatus("Todo borrado. Podés seguir escaneando.", 4000);
+    setStatus(msg || "Todo borrado. Podés seguir escaneando.", msg ? 7000 : 4000);
   }
 
   clearBtn.addEventListener("click", async () => {
-    if (await askConfirm("¿Borrar todas las fotos y las cantidades cargadas?", "Sí, vaciar todo", "Cancelar")) clearAll();
+    if (await askConfirm("¿Borrar todas las fotos que todavía no guardaste?", "Sí, vaciar todo", "Cancelar")) clearAll();
   });
 
-  // ---------- Tabla de recepciones (cantidades totales) ----------
-  let totalsState = loadTotals();
-  let totalsMode = "edit";
-  function loadTotals() {
-    try { const t = JSON.parse(localStorage.getItem("totals") || "{}"); return { values: t.values || {}, extras: Array.isArray(t.extras) ? t.extras : [], oc: Period.cleanOc(t.oc) }; }
-    catch (e) { return { values: {}, extras: [], oc: "" }; }
-  }
-  function persistTotals() { try { localStorage.setItem("totals", JSON.stringify(totalsState)); } catch (e) { /* nada */ } }
-
-  // Un número: acepta 12 · 12,5 · 12.5 · 1.250 (mil doscientos cincuenta) · 1.250,5
-  function parseNumber(s) {
-    s = String(s).replace(/\s+/g, "");
-    if (!s) return null;
-    if (!/^[0-9.,]+$/.test(s)) return NaN;
-    const hasC = s.includes(","), hasD = s.includes(".");
-    if (hasC && hasD) {
-      if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
-      else s = s.replace(/,/g, "");
-    } else if (hasC) {
-      s = (s.match(/,/g) || []).length > 1 ? s.replace(/,/g, "") : s.replace(",", ".");
-    } else if (hasD) {
-      const parts = s.split(".");
-      if (parts.length > 2 || (parts[1].length === 3 && parts[0] !== "" && parts[0] !== "0")) s = parts.join("");
-    }
-    const v = Number(s);
-    return isFinite(v) && v >= 0 ? v : NaN;
-  }
-  // Una cantidad o una suma de cantidades ("120+35,5")
-  function parseQty(text) {
-    const t = String(text || "").trim();
-    if (!t) return { empty: true };
-    let sum = 0;
-    const parts = t.split("+");
-    for (const p of parts) {
-      const v = parseNumber(p);
-      if (v === null || Number.isNaN(v)) return { ok: false };
-      sum += v;
-    }
-    return { ok: true, value: Math.round(sum * 1000) / 1000, isSum: parts.length > 1 };
-  }
-  const formatQty = (v) => String(Math.round(v * 1000) / 1000).replace(".", ",");
-
-  function totalsFilledCount() {
-    let n = 0;
-    for (const name of catalogList()) if (String(totalsState.values[name] || "").trim()) n++;
-    for (const x of totalsState.extras) if (String(x.text || "").trim() && String(x.name || "").trim()) n++;
-    return n;
-  }
-  function updateTotalsInfo() {
-    const n = totalsFilledCount();
-    const base = n ? n + (n === 1 ? " producto con cantidad" : " productos con cantidad") : "Sin cantidades cargadas";
-    totalsInfo.textContent = (totalsState.oc ? "OC " + totalsState.oc + " · " : "") + base;
-    totalsInfo.classList.toggle("filled", n > 0);
-  }
-
-  // ---------- Período (semanal / quincenal) y nombre del PDF ----------
+  // ---------- Período (semanal / quincenal) ----------
+  // Se calcula con la fecha en que se guardan las fotos; en cada PDF guardado se puede cambiar después.
   const currentPeriod = () => Period.forDate(settings.periodMode === "quincenal" ? "quincenal" : "semanal", new Date());
   const periodSeg = $("periodSeg"), periodText = $("periodText"), periodSub = $("periodSub");
-  const fileNamePreview = $("fileNamePreview"), periodHint = $("periodHint");
-  const pdfName = () => Period.fileName(totalsState.oc || "", currentPeriod());
 
   function refreshPeriod() {
     const p = currentPeriod();
     periodSeg.querySelectorAll(".seg-btn").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mode === p.mode)));
     periodText.textContent = "día " + Period.text(p);
     periodSub.textContent = "(" + p.label + ")";
-    periodHint.textContent = "· período " + Period.text(p);
-    $("destHint").textContent = bridgeReady()
-      ? "Se sube a Drive: " + Period.folderPath(totalsState.oc || "número", p) + " y queda un borrador en Gmail."
-      : "Puente a Drive/Gmail sin configurar: el PDF se descarga en el dispositivo.";
-    fileNamePreview.textContent = "REMITOS_" + (totalsState.oc || "OC") + "_" + p.from + "_al_" + p.to;
   }
   periodSeg.addEventListener("click", (e) => {
     const b = e.target.closest(".seg-btn");
@@ -669,159 +600,41 @@
   });
   setInterval(refreshPeriod, 60000);
 
-  function calcLabel(row, input) {
-    const q = parseQty(input.value);
-    let lab = row.querySelector(".calc");
-    if (q.ok && q.isSum) {
-      if (!lab) { lab = document.createElement("div"); lab.className = "calc"; row.appendChild(lab); }
-      lab.textContent = "= " + formatQty(q.value);
-    } else if (lab) lab.remove();
-  }
-
-  function buildTotalsRows() {
-    totalsRows.innerHTML = "";
-    const mkQty = (get, set, placeholder) => {
-      const inp = document.createElement("input");
-      inp.type = "text"; inp.className = "q"; inp.inputMode = "decimal"; inp.autocomplete = "off"; inp.placeholder = placeholder || "—";
-      inp.value = get();
-      inp.addEventListener("input", () => { set(inp.value); inp.classList.remove("bad"); totalsErr.textContent = ""; calcLabel(inp.parentElement, inp); updateTotalsInfo(); });
-      inp.addEventListener("blur", () => { const q = parseQty(inp.value); inp.classList.toggle("bad", q.ok === false); });
-      return inp;
-    };
-    catalogList().forEach((name, i) => {
-      const row = document.createElement("div");
-      row.className = "tt-row";
-      const n = document.createElement("div"); n.className = "n"; n.textContent = i + 1;
-      const nm = document.createElement("div"); nm.className = "name"; nm.textContent = name;
-      const inp = mkQty(() => totalsState.values[name] || "", (v) => { totalsState.values[name] = v; persistTotals(); });
-      row.append(n, nm, inp);
-      calcLabel(row, inp);
-      totalsRows.appendChild(row);
-    });
-    totalsState.extras.forEach((x, i) => {
-      const row = document.createElement("div");
-      row.className = "tt-row extra";
-      const rm = document.createElement("button"); rm.type = "button"; rm.className = "rm"; rm.title = "Quitar"; rm.innerHTML = ICON("x");
-      rm.addEventListener("click", () => { totalsState.extras.splice(i, 1); persistTotals(); buildTotalsRows(); updateTotalsInfo(); });
-      const nm = document.createElement("input"); nm.type = "text"; nm.className = "name-in"; nm.placeholder = "Nombre del producto"; nm.value = x.name || "";
-      nm.addEventListener("input", () => { x.name = nm.value; persistTotals(); updateTotalsInfo(); });
-      const inp = mkQty(() => x.text || "", (v) => { x.text = v; persistTotals(); });
-      row.append(rm, nm, inp);
-      calcLabel(row, inp);
-      totalsRows.appendChild(row);
-    });
-  }
-
-  function openTotals(mode) {
-    totalsMode = mode;
-    const save = mode === "save";
-    ocField.hidden = !save;
-    totalsOk.textContent = save ? (bridgeReady() ? "Guardar y enviar" : "Guardar PDF") : "Aceptar";
-    totalsHint.textContent = save
-      ? "Cargá la cantidad total recibida de cada producto antes de guardar. Los que dejes vacíos no aparecen en el PDF."
-      : "Cargá la cantidad total recibida de cada producto. Quedan guardadas hasta que vacíes todo.";
-    if (save) ocInput.value = totalsState.oc || "";
-    refreshPeriod();
-    totalsErr.textContent = "";
-    buildTotalsRows();
-    totalsDialog.showModal();
-    totalsRows.scrollTop = 0;
-    const first = totalsRows.querySelector("input.q");
-    if (save) { ocInput.focus(); ocInput.select(); } else if (first) first.focus();
-  }
-
-  // Enter pasa al siguiente casillero (en vez de cerrar el cuadro)
-  totalsDialog.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" || e.target.tagName !== "INPUT") return;
-    e.preventDefault();
-    const inputs = [...totalsDialog.querySelectorAll("input")].filter((x) => !x.closest("[hidden]"));
-    const k = inputs.indexOf(e.target);
-    if (k >= 0 && k < inputs.length - 1) { inputs[k + 1].focus(); inputs[k + 1].select && inputs[k + 1].select(); }
-    else totalsOk.focus();
-  });
-
-  ocInput.addEventListener("input", () => {
-    const c = Period.cleanOc(ocInput.value);
-    if (c !== ocInput.value) ocInput.value = c;
-    ocInput.classList.remove("bad");
-    totalsState.oc = c; persistTotals(); refreshPeriod(); updateTotalsInfo();
-    totalsErr.textContent = "";
-  });
-
-  $("addExtraBtn").addEventListener("click", () => {
-    totalsState.extras.push({ name: "", text: "" });
-    persistTotals(); buildTotalsRows();
-    const names = totalsRows.querySelectorAll("input.name-in");
-    if (names.length) { names[names.length - 1].focus(); totalsRows.scrollTop = totalsRows.scrollHeight; }
-  });
-  $("clearTotalsBtn").addEventListener("click", () => {
-    totalsState = { values: {}, extras: [], oc: totalsState.oc };   // la OC no se borra
-    persistTotals(); buildTotalsRows(); updateTotalsInfo();
-  });
-  $("totalsCancel").addEventListener("click", () => totalsDialog.close());
-  totalsBtn.addEventListener("click", () => openTotals("edit"));
-
-  // Filas listas para el PDF; devuelve null si hay datos inválidos
-  function collectTotals() {
-    const rows = [];
-    let bad = 0, noName = 0;
-    const inputs = [...totalsRows.querySelectorAll(".tt-row")];
-    const mark = (idx, isBad) => { const q = inputs[idx] && inputs[idx].querySelector("input.q"); if (q) q.classList.toggle("bad", isBad); };
-    const names = catalogList();
-    names.forEach((name, i) => {
-      const q = parseQty(totalsState.values[name]);
-      if (q.empty) { mark(i, false); return; }
-      if (!q.ok) { bad++; mark(i, true); return; }
-      rows.push({ name, qtyText: formatQty(q.value) });
-    });
-    totalsState.extras.forEach((x, k) => {
-      const q = parseQty(x.text), nm = String(x.name || "").trim();
-      const idx = names.length + k;
-      if (q.empty && !nm) return;
-      if (!q.empty && !q.ok) { bad++; mark(idx, true); return; }
-      if (q.empty) { bad++; mark(idx, true); return; }
-      if (!nm) { noName++; return; }
-      mark(idx, false);
-      rows.push({ name: nm, qtyText: formatQty(q.value) });
-    });
-    if (bad || noName) {
-      totalsErr.textContent = bad ? "Revisá las cantidades marcadas en rojo (por ejemplo 12 o 2,5)." : "Falta el nombre de un producto agregado.";
-      return null;
-    }
-    return rows;
-  }
-
-  totalsForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const rows = collectTotals();
-    if (rows === null) return;
-    if (totalsMode === "edit") { totalsDialog.close(); updateTotalsInfo(); return; }
-    if (!totalsState.oc) {
-      ocInput.classList.add("bad"); ocInput.focus();
-      totalsErr.textContent = "Escribí el número de la orden de compra (OC) para poder nombrar el PDF.";
-      return;
-    }
-    const period = currentPeriod();
-    const name = Period.fileName(totalsState.oc, period);
-    if (!rows.length) {
-      totalsDialog.close();
-      if (!(await askConfirm("No cargaste ninguna cantidad, así que el PDF saldrá sin la tabla de recepciones.\n\n¿Guardarlo igual?", "Guardar igual", "Volver"))) { openTotals("save"); return; }
-    } else totalsDialog.close();
-    await savePdf(name, rows, period);
-  });
-
   // ---------- Guardar PDF ----------
-  const b64ToBytes = (b64) => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
-
+  // Las fotos se guardan como un "PDF guardado" (lotes.js): en la cuenta del usuario si hay sesión, si no en este
+  // dispositivo. La tabla de recepciones y el envío al borrador de Gmail se hacen después, desde cualquier dispositivo.
+  function setSaving(on, label) {
+    saving = on;
+    saveLabel.textContent = label || "Guardar PDF";
+    saveBtn.classList.toggle("is-busy", on);
+    syncCards();
+  }
   saveBtn.addEventListener("click", async () => {
+    if (saving) return;
+    if (!window.Lotes) { await showMessage("Falta el archivo lotes.js: volvé a cargar la página."); return; }
     if (pages.some((p) => p.status === "processing")) { await showMessage("Todavía se están procesando algunas fotos. Esperá unos segundos y probá de nuevo."); return; }
     const errors = pages.filter((p) => p.status === "error").length;
-    if (errors && !(await askConfirm(errors + " foto(s) no se pudieron procesar y no van a estar en el PDF.\n\n¿Seguir igual?", "Seguir", "Cancelar"))) return;
-    if (!pages.some((p) => p.status === "ok")) { await showMessage("No hay fotos listas para guardar."); return; }
-    openTotals("save");
+    if (errors && !(await askConfirm(errors + " foto(s) no se pudieron procesar y no se van a guardar.\n\n¿Seguir igual?", "Seguir", "Cancelar"))) return;
+    const ok = pages.filter((p) => p.status === "ok" && p.blob);
+    if (!ok.length) { await showMessage("No hay fotos listas para guardar."); return; }
+    const e0 = epoch;
+    setSaving(true, "Guardando…");
+    try {
+      const shots = ok.map((p) => ({ blob: p.blob, w: p.w, h: p.h, thumb: p.thumbUrl }));
+      const r = await window.Lotes.saveBatch(shots, currentPeriod(), (done, total) => setSaving(true, "Subiendo " + done + " de " + total + "…"));
+      setSaving(false);
+      if (e0 === epoch) clearAll(r.cloud
+        ? "Guardado ✔ Está en “PDF guardados”: completá la tabla de recepciones cuando quieras, desde acá o desde la computadora."
+        : "Guardado en este dispositivo ✔ " + (r.reason || ""));
+      if (!r.cloud && r.reason) await showMessage("El PDF quedó guardado en este dispositivo, pero no se pudo subir a tu cuenta:\n\n" + r.reason + "\n\nSe vuelve a intentar solo; también podés tocar “Subir” en la lista.");
+    } catch (e) {
+      console.error(e);
+      setSaving(false);
+      await showMessage("No se pudo guardar: " + (e.message || e) + "\n\nLas fotos siguen en pantalla; probá de nuevo.");
+    }
   });
 
-  // ---------- Puente a Google Drive y Gmail ----------
+  // ---------- Puente a Google Drive y Gmail (lo usa lotes.js para enviar) ----------
   const bridgeReady = () => /^https:\/\/script\.google(usercontent)?\.com\//.test(String(settings.bridgeUrl || "").trim()) && !!String(settings.bridgeKey || "").trim();
   const blobToBase64 = (blob) => new Promise((res, rej) => {
     const r = new FileReader();
@@ -830,13 +643,13 @@
     r.readAsDataURL(blob);
   });
   // Envía el PDF al puente. Lanza Error con un mensaje claro si algo falla.
-  async function sendToBridge(pdfBlob, name, period) {
+  async function sendToBridge(pdfBlob, name, oc, period) {
     const MAX = 17 * 1024 * 1024;                      // Gmail admite ~25 MB; en base64 el archivo crece un tercio
     if (pdfBlob.size > MAX) throw new Error("El PDF pesa " + (pdfBlob.size / 1048576).toFixed(1) + " MB y es demasiado grande para adjuntarlo en Gmail (máximo ~17 MB). Dividí el lote en dos.");
     const now = new Date();
     const payload = {
-      key: String(settings.bridgeKey).trim(), oc: totalsState.oc, filename: name, year: period.year, month: period.month,
-      subject: Period.emailSubject(totalsState.oc, period), body: Period.emailBody(totalsState.oc, period, now),
+      key: String(settings.bridgeKey).trim(), oc, filename: name, year: period.year, month: period.month,
+      subject: Period.emailSubject(oc, period), body: Period.emailBody(oc, period, now),
       pdf: await blobToBase64(pdfBlob)
     };
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 180000);
@@ -861,46 +674,17 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
-  let sending = false;
-  async function savePdf(name, rows, period) {
-    if (sending) return;
-    sending = true; saveBtn.disabled = true;
-    setStatus("Generando PDF…", 0);
-    try {
-      const ok = pages.filter((p) => p.status === "ok" && p.blob);
-      const data = [];
-      for (const p of ok) data.push({ bytes: new Uint8Array(await p.blob.arrayBuffer()), w: p.w, h: p.h });
-      const L = window.LOGO_PDF;
-      const d = new Date(), pad = (n) => String(n).padStart(2, "0");
-      const pdf = buildPdf(data, {
-        company: COMPANY, title: name, oc: totalsState.oc, periodText: Period.text(period),
-        date: pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear(),
-        logo: L ? { bytes: b64ToBytes(L.b64), w: L.w, h: L.h } : null,
-        summary: rows.length ? { rows, note: "Cantidades ingresadas manualmente por el responsable de recepción." } : null
-      });
-      let sent = null, failMsg = "";
-      if (bridgeReady()) {
-        setStatus("Enviando a Google Drive y Gmail…", 0);
-        try { sent = await sendToBridge(pdf, name, period); } catch (e) { failMsg = e.message; }
-      }
-      if (sent) {
-        setStatus("Enviado ✔ " + name + ".pdf", 8000);
-        const q = "PDF guardado en Drive:\n" + sent.carpeta + (sent.reemplazado ? "\n(reemplazó un PDF con el mismo nombre; el anterior está en la papelera de Drive)" : "") +
-          "\n\nBorrador creado en Gmail para revisar y enviar.\n\n¿Querés vaciar las fotos y las cantidades para empezar un lote nuevo?";
-        if (await askConfirm(q, "Sí, vaciar", "No, dejarlas")) clearAll();
-      } else {
-        // Sin puente o con error: se descarga en el dispositivo para no perder el trabajo
-        downloadBlob(pdf, name + ".pdf");
-        setStatus("PDF “" + name + ".pdf” guardado en Descargas", 7000);
-        const why = bridgeReady() ? "No se pudo enviar a Drive/Gmail: " + failMsg + "\n\nEl PDF se descargó en este dispositivo para que no lo pierdas." : "El PDF se descargó en este dispositivo (el puente a Drive/Gmail no está configurado en Ajustes).";
-        if (await askConfirm(why + "\n\n¿Querés vaciar las fotos y las cantidades para empezar un lote nuevo?", "Sí, vaciar", "No, dejarlas")) clearAll();
-      }
-    } catch (err) {
-      console.error(err);
-      setStatus("Error al generar el PDF: " + err.message, 8000);
-    } finally {
-      sending = false; saveBtn.disabled = !pages.some((p) => p.status === "ok");
-    }
+  // Arma el PDF de un lote: pages = [{bytes (JPEG), w, h}], rows = [{name, qtyText}]
+  const b64ToBytes = (b64) => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+  function makePdf(data, name, oc, period, rows) {
+    const L = window.LOGO_PDF;
+    const d = new Date(), pad = (n) => String(n).padStart(2, "0");
+    return buildPdf(data, {
+      company: COMPANY, title: name, oc, periodText: Period.text(period),
+      date: pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear(),
+      logo: L ? { bytes: b64ToBytes(L.b64), w: L.w, h: L.h } : null,
+      summary: rows.length ? { rows, note: "Cantidades ingresadas manualmente por el responsable de recepción." } : null
+    });
   }
 
   // ---------- Ajustes ----------
@@ -920,7 +704,7 @@
     settings.bridgeKey = $("bridgeKey").value.trim();
     persistSettings();
     settingsDialog.close();
-    updateTotalsInfo();
+    if (window.RemitosApp.onSettings) { try { window.RemitosApp.onSettings(); } catch (e) { /* nada */ } }
   });
   $("bridgeTest").addEventListener("click", async () => {
     const url = $("bridgeUrl").value.trim(), key = $("bridgeKey").value.trim(), msg = $("bridgeMsg");
@@ -947,8 +731,7 @@
   settings = loadSettings();
   if (settings.periodMode !== "quincenal") settings.periodMode = "semanal";
   refreshPeriod();
-  updateTotalsInfo();
-  persistSettings();                 // limpia del navegador los datos de la lectura de texto de versiones anteriores
+  persistSettings();                 // limpia del navegador los datos de versiones anteriores
   autoCropChk.checked = settings.autoCrop !== false;
   filterSelect.value = settings.filterMode || "mejorado";
   syncCards();
@@ -968,11 +751,11 @@
         stream = null; video.srcObject = null; resetDragState();
       }
     },
-    askConfirm, showMessage,
-    // para el lector de remitos (lector.js)
-    pages: () => pages, catalog: catalogList, settings: () => settings, persistSettings, setStatus,
-    parseNumber, formatQty, totals: () => totalsState, persistTotals, refresh: () => syncCards(), updateTotalsInfo,
-    onPageReady: null, onSync: null
+    askConfirm, showMessage, setStatus,
+    // para los PDF guardados (lotes.js)
+    pages: () => pages, catalog: catalogList, settings: () => settings, defaultCatalog: () => DEFAULT_CATALOG.slice(),
+    bridgeReady, sendToBridge, downloadBlob, makePdf, toBlob, fitCanvas,
+    onSettings: null
   };
   // Con el ingreso de usuarios (auth.js), la cámara espera a que la cuenta esté habilitada.
   if (window.LAGAuth) window.LAGAuth.onUnlock(() => window.RemitosApp.setActive(true));

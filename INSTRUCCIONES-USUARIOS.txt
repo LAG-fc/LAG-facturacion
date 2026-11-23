@@ -1,4 +1,4 @@
-REGISTRO E INGRESO DE USUARIOS · LAG PANIFICADOS SRL — versión 8.2
+REGISTRO E INGRESO DE USUARIOS · LAG PANIFICADOS SRL — versión 8.3
 =====================================================================
 
 QUÉ HACE
@@ -13,6 +13,9 @@ QUÉ HACE
   Cuando hay cuentas esperando aprobación aparece un punto amarillo sobre tus iniciales.
 - Sin internet: si la sesión ya estaba iniciada en ese dispositivo, la aplicación abre igual.
   Para iniciar sesión por primera vez en un dispositivo hace falta internet.
+- PDF guardados (v8.3): cada persona guarda en su cuenta los remitos escaneados ("Guardar PDF") y los ve desde
+  cualquier dispositivo donde inicie sesión: por ejemplo, saca las fotos con el celular y carga la tabla de
+  recepciones desde la computadora. Nadie más ve esos PDF, ni siquiera un administrador.
 
 DÓNDE SE GUARDAN LOS DATOS (GRATIS)
 - Se usa Firebase de Google, plan "Spark" (gratuito, NO pide tarjeta de crédito y nunca genera cobros:
@@ -20,8 +23,10 @@ DÓNDE SE GUARDAN LOS DATOS (GRATIS)
   · Firebase Authentication: guarda las cuentas. Las contraseñas las guarda Google cifradas; nadie puede verlas,
     ni siquiera el administrador.
   · Cloud Firestore: guarda el perfil de cada usuario (nombre, correo, estado, rol, fecha de registro y
-    último ingreso) en la colección "usuarios". Límites gratis: 50.000 lecturas y 20.000 escrituras por día
-    y 1 GB; esta página usa una parte mínima.
+    último ingreso) en la colección "usuarios", y desde v8.3 los "PDF guardados" de cada uno (las fotos de los
+    remitos y la tabla de recepciones) en "usuarios/<cuenta>/lotes". Límites gratis: 50.000 lecturas y
+    20.000 escrituras por día y 1 GB en total. Un lote de 10 remitos ocupa entre 2 y 8 MB; los enviados se borran
+    solos a los 15 días, así que en el uso normal sobra espacio. La lista "PDF guardados" muestra lo usado.
 - Lo que la página ya guardaba en cada dispositivo (OC cargadas, ajustes, puente a Google, aprendizaje del
   lector) sigue igual: queda en ese dispositivo, no en la cuenta del usuario.
 
@@ -70,6 +75,7 @@ PASO 5 — Publicar las reglas de seguridad
   2. Borrá todo lo que aparece y pegá el contenido completo del archivo firestore.rules (está en el repositorio).
   3. "Publicar".
   Estas reglas impiden que alguien se apruebe solo, se haga administrador o lea los datos de otros usuarios.
+  CADA VEZ QUE CAMBIE firestore.rules (por ejemplo en la versión 8.3) hay que repetir este paso.
 
 PASO 6 — Autorizar la dirección de la página
   1. Authentication > pestaña "Configuración" (Settings) > "Dominios autorizados" > "Agregar dominio".
@@ -102,4 +108,5 @@ PROBLEMAS FRECUENTES (el mensaje de la página indica el paso a revisar)
 - "El ingreso con correo y contraseña no está activado" → paso 3.
 - "Firebase no permitió leer tu perfil" → paso 5 (reglas sin publicar o pegadas incompletas).
 - "Todavía no se creó la base de datos Firestore" → paso 4.
+- "Firebase no permitió guardar los PDF en tu cuenta" → paso 5 (publicar las reglas nuevas de firestore.rules).
 - "Los datos de firebase-config.js no son correctos" → paso 2.

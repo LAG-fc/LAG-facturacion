@@ -1,4 +1,4 @@
-// auth.js — Ingreso y registro de usuarios (v8.2).
+// auth.js — Ingreso y registro de usuarios (v8.2; acceso a la cuenta para los PDF guardados desde v8.3).
 //
 // Usa Firebase, plan gratuito "Spark" (sin tarjeta de crédito):
 //   · Firebase Authentication guarda las cuentas (correo y contraseña cifrada por Google) y envía los correos
@@ -40,6 +40,8 @@
     user: () => currentUser,
     profile: () => profile,
     isAdmin: () => !!(profile && profile.rol === "admin" && profile.estado === "aprobado"),
+    // Acceso a la base de datos de la cuenta (lo usa lotes-store.js). null sin sesión o sin cuenta aprobada.
+    cloud: () => (db && currentUser && profile && profile.estado === "aprobado" && profile.uid === currentUser.uid ? { db, uid: currentUser.uid } : null),
     signOut: () => logout(true)
   };
 
@@ -364,7 +366,9 @@
   async function logout(ask) {
     if (ask && unlocked && window.RemitosApp && window.RemitosApp.askConfirm) {
       const n = (window.RemitosApp.pages && window.RemitosApp.pages().length) || 0;
-      const extra = n ? "\n\nAtención: hay " + n + (n === 1 ? " remito escaneado" : " remitos escaneados") + " en pantalla que se van a perder si no los guardaste." : "";
+      let extra = n ? "\n\nAtención: hay " + n + (n === 1 ? " remito escaneado" : " remitos escaneados") + " en pantalla que se van a perder si no los guardaste." : "";
+      const up = window.LotesStore ? await window.LotesStore.pendingCount().catch(() => 0) : 0;
+      if (up) extra += "\n\n" + (up === 1 ? "Hay 1 PDF guardado que todavía no se subió" : "Hay " + up + " PDF guardados que todavía no se subieron") + " a tu cuenta: queda" + (up === 1 ? "" : "n") + " en este dispositivo y se sube" + (up === 1 ? "" : "n") + " cuando vuelvas a iniciar sesión acá con internet.";
       if (!(await window.RemitosApp.askConfirm("¿Cerrar la sesión en este dispositivo?" + extra, "Cerrar sesión", "Cancelar"))) return;
     }
     store.del(CACHE_KEY);

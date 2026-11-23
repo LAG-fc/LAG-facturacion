@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Escáner de Remitos · LAG Panificados</title>
-  <meta name="description" content="Escaneá los remitos con la cámara, cargá las cantidades recepcionadas y guardá todo en un PDF.">
+  <meta name="description" content="Escaneá los remitos con la cámara, guardalos en tu cuenta y completá la tabla de recepciones desde cualquier dispositivo.">
   <meta name="theme-color" content="#741420">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -27,6 +27,12 @@
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></symbol>
+    <symbol id="i-cloud-off" viewBox="0 0 24 24"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3"/><line x1="1" y1="1" x2="23" y2="23"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-zoom" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
@@ -194,7 +200,7 @@
           </div>
         </div>
 
-        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v8.2</span></p>
+        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v8.3</span></p>
       </section>
     </div>
   </div>
@@ -210,7 +216,7 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg><span class="hide-sm">Instalar</span></button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v8.2</span>
+      <span class="ver" id="verTag">v8.3</span>
       <div class="user-menu" id="userMenu" hidden>
         <button type="button" class="user-btn" id="userBtn" aria-haspopup="true" aria-expanded="false" aria-controls="userPop" title="Tu cuenta">
           <span class="avatar" id="userAvatar">·</span><span class="user-first hide-sm" id="userFirst"></span><svg class="i chev"><use href="#i-chevron"/></svg>
@@ -233,6 +239,25 @@
   </nav>
 
   <main class="layout" id="remitosView">
+    <aside class="card lotes" id="lotesPanel" aria-label="PDF guardados">
+      <div class="lotes-header">
+        <h2><svg class="i"><use href="#i-file"/></svg>PDF guardados <span class="count" id="lotesCount">0</span></h2>
+        <button type="button" id="lotesRefresh" class="btn ghost icon-btn" title="Actualizar la lista" aria-label="Actualizar la lista"><svg class="i"><use href="#i-rotate"/></svg></button>
+      </div>
+      <p class="lotes-where" id="lotesWhere"></p>
+      <div class="lotes-list" id="lotesList"></div>
+      <div class="lotes-empty" id="lotesEmpty" hidden>
+        <svg class="i big"><use href="#i-file"/></svg>
+        <p>Todavía no hay PDF guardados.</p>
+        <small>Sacá las fotos de los remitos y tocá “Guardar PDF”. Después cargás la tabla de recepciones desde este u otro dispositivo.</small>
+      </div>
+      <details class="lotes-sent" id="lotesSent" hidden>
+        <summary>Enviados <span class="cnt" id="lotesSentN"></span></summary>
+        <div class="lotes-list" id="lotesSentList"></div>
+        <p class="hint">Los enviados se borran solos a los 15 días (el PDF queda en Drive).</p>
+      </details>
+    </aside>
+
     <section class="card scan">
       <div class="period-bar">
         <div class="seg" id="periodSeg" role="radiogroup" aria-label="Tipo de período">
@@ -285,15 +310,8 @@
         <small>Apuntá la cámara a la hoja y tocá “Sacar foto”, o arrastrá las fotos hasta acá.</small>
       </div>
       <div class="pages-footer">
-        <div class="totals-summary">
-          <div><strong>Tabla de recepciones</strong><span id="totalsInfo">Sin cantidades cargadas</span></div>
-          <button id="totalsBtn" class="btn soft small"><svg class="i"><use href="#i-list"/></svg>Cargar totales</button>
-        </div>
-        <div class="totals-summary" id="readSummary" hidden>
-          <div><strong>Lector de remitos</strong><span id="readInfo">—</span></div>
-          <button id="readOpenBtn" class="btn soft small"><svg class="i"><use href="#i-check"/></svg>Revisar lecturas</button>
-        </div>
-        <button id="saveBtn" class="btn primary big wide" disabled><svg class="i"><use href="#i-download"/></svg>Guardar como PDF</button>
+        <p class="save-hint" id="saveHint">Al guardar, el PDF queda en “PDF guardados”. La tabla de recepciones se completa después, desde este u otro dispositivo.</p>
+        <button id="saveBtn" class="btn primary big wide" disabled><svg class="i"><use href="#i-download"/></svg><span id="saveLabel">Guardar PDF</span></button>
       </div>
     </aside>
   </main>
@@ -463,87 +481,59 @@
     </div>
   </dialog>
 
-  <!-- Totales recepcionados y orden de compra -->
-  <dialog id="totalsDialog" class="dlg wide-dlg">
-    <form method="dialog" id="totalsForm" novalidate>
-      <div class="dlg-head">
-        <img src="logo.png" alt="" class="dlg-logo">
-        <div>
-          <h3>Tabla de recepciones</h3>
-          <p class="hint" id="totalsHint">Cargá la cantidad total recibida de cada producto. Los que dejes vacíos no aparecen en el PDF.</p>
+  <!-- PDF guardado: fotos de los remitos + tabla de recepciones + envío -->
+  <dialog id="lotDialog" class="dlg lot-dlg" aria-labelledby="lotTitle">
+    <div class="lot-head">
+      <div class="lot-head-txt">
+        <h3 id="lotTitle">Remitos</h3>
+        <p class="hint" id="lotSub"></p>
+      </div>
+      <span class="lot-state" id="lotState"></span>
+      <button type="button" id="lotClose" class="btn ghost icon-btn" aria-label="Cerrar" autofocus><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="lot-body">
+      <section class="lot-viewer" aria-label="Fotos de los remitos">
+        <div class="lv-bar">
+          <button type="button" id="lvPrev" class="btn ghost icon-btn" aria-label="Remito anterior"><svg class="i"><use href="#i-left"/></svg></button>
+          <span id="lvPos">—</span>
+          <button type="button" id="lvNext" class="btn ghost icon-btn" aria-label="Remito siguiente"><svg class="i"><use href="#i-right"/></svg></button>
+          <button type="button" id="lvZoom" class="btn ghost small lv-zoom" aria-pressed="false"><svg class="i"><use href="#i-zoom"/></svg>Ampliar</button>
         </div>
-      </div>
-      <label class="field" id="ocField">Orden de compra (OC)
-        <input id="ocInput" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" spellcheck="false" placeholder="Ej.: 93035" maxlength="12">
-        <small class="hint">Archivo: <b id="fileNamePreview">REMITOS_…</b>.pdf <span id="periodHint"></span></small>
-        <small class="hint" id="destHint"></small>
-      </label>
-      <div class="tt-head"><span>N°</span><span>Producto</span><span>Cantidad total</span></div>
-      <div id="totalsRows" class="tt-rows"></div>
-      <div class="tt-tools">
-        <button type="button" id="addExtraBtn" class="btn ghost small"><svg class="i"><use href="#i-plus"/></svg>Agregar otro producto</button>
-        <button type="button" id="clearTotalsBtn" class="btn ghost small danger-text">Limpiar cantidades</button>
-      </div>
-      <p id="totalsErr" class="err" role="alert"></p>
-      <p class="hint">Podés escribir una suma, por ejemplo <b>120+35,5</b>. Se admite coma o punto decimal.</p>
-      <div class="dialog-actions">
-        <button type="button" id="totalsCancel" class="btn secondary">Cancelar</button>
-        <button type="submit" id="totalsOk" class="btn primary">Guardar PDF</button>
-      </div>
-    </form>
-  </dialog>
-
-  <!-- Lector de remitos: revisión de lo leído -->
-  <dialog id="readDialog" class="dlg read-dlg">
-    <div class="rd-head">
-      <div><h3>Lector de remitos</h3><p class="hint" id="rdSub"></p></div>
-      <div class="rd-nav">
-        <button type="button" id="rdPrev" class="btn ghost small" aria-label="Anterior">‹</button>
-        <span id="rdPos">1 / 1</span>
-        <button type="button" id="rdNext" class="btn ghost small" aria-label="Siguiente">›</button>
-        <button type="button" id="rdClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
-      </div>
-    </div>
-    <div class="rd-body">
-      <div class="rd-left">
-        <div class="rd-photo"><img id="rdImg" alt="Remito"></div>
-        <div class="rd-crops" id="rdCrops"></div>
-      </div>
-      <div class="rd-right">
-        <p id="rdBanner" class="rd-banner" hidden></p>
-        <div class="rd-field"><label>Cliente</label><select id="rdClient"></select><i class="dot" id="rdClientDot"></i></div>
-        <div class="rd-field"><label>OC</label><input id="rdOc" inputmode="numeric" maxlength="12" placeholder="—"><i class="dot" id="rdOcDot"></i></div>
-        <div class="rd-qty-head"><strong>Cantidades</strong><button type="button" id="rdAddRow" class="btn ghost small"><svg class="i"><use href="#i-plus"/></svg>Renglón</button></div>
-        <div id="rdRows" class="rd-rows"></div>
-        <p id="rdNote" class="hint"></p>
-        <div class="rd-actions">
-          <button type="button" id="rdConfirm" class="btn primary"><svg class="i"><use href="#i-check"/></svg>Confirmar y aprender</button>
-          <button type="button" id="rdReread" class="btn secondary small">Volver a leer</button>
+        <div class="lv-stage" id="lvStage">
+          <img id="lvImg" alt="Remito">
+          <div class="lv-msg" id="lvMsg"><div class="spinner"></div><span>Cargando las fotos…</span></div>
         </div>
-      </div>
+        <div class="lv-strip" id="lvStrip"></div>
+      </section>
+      <form class="lot-form" id="lotForm" novalidate>
+        <label class="field lot-oc">Orden de compra (OC)
+          <input id="lotOc" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" spellcheck="false" placeholder="Ej.: 93035" maxlength="12">
+          <small class="hint">Archivo: <b id="lotFile">REMITOS_…</b>.pdf</small>
+        </label>
+        <div class="lot-period">
+          <div class="seg" id="lotPeriodSeg" role="radiogroup" aria-label="Tipo de período">
+            <button type="button" role="radio" class="seg-btn" data-mode="semanal" aria-checked="true">Semanal</button>
+            <button type="button" role="radio" class="seg-btn" data-mode="quincenal" aria-checked="false">Quincenal</button>
+          </div>
+          <span class="period-info">Remitos del <b id="lotPeriodText">—</b> <small id="lotPeriodSub"></small></span>
+        </div>
+        <div class="tt-head"><span>N°</span><span>Producto</span><span>Cantidad total</span></div>
+        <div id="lotRows" class="tt-rows"></div>
+        <div class="tt-tools">
+          <button type="button" id="lotAddExtra" class="btn ghost small"><svg class="i"><use href="#i-plus"/></svg>Agregar otro producto</button>
+          <span class="hint">Podés escribir sumas: <b>120+35,5</b></span>
+        </div>
+        <p id="lotErr" class="err" role="alert"></p>
+        <p class="hint lot-dest" id="lotDest"></p>
+      </form>
     </div>
-    <div class="rd-foot">
-      <span class="hint" id="rdStats"></span>
-      <div class="rd-foot-btns">
-        <button type="button" id="rdZones" class="btn ghost small">Marcar zonas</button>
-        <button type="button" id="rdApply" class="btn soft">Pasar a la tabla de recepciones</button>
+    <div class="lot-foot">
+      <button type="button" id="lotDelete" class="btn ghost small danger-text" title="Borrar este PDF guardado"><svg class="i"><use href="#i-trash"/></svg><span class="hide-sm">Borrar</span></button>
+      <div class="lot-foot-btns">
+        <button type="button" id="lotDownload" class="btn secondary"><svg class="i"><use href="#i-download"/></svg><span><span class="hide-sm">Descargar </span>PDF</span></button>
+        <button type="button" id="lotSave" class="btn soft"><svg class="i"><use href="#i-check"/></svg><span>Guardar<span class="hide-sm"> tabla</span></span></button>
+        <button type="button" id="lotSend" class="btn primary"><svg class="i"><use href="#i-send"/></svg>Enviar al borrador de Gmail</button>
       </div>
-    </div>
-  </dialog>
-
-  <!-- Marcar las zonas del remito (una sola vez) -->
-  <dialog id="zonesDialog" class="dlg read-dlg">
-    <div class="rd-head"><div><h3>Marcar las zonas del remito</h3><p class="hint">Arrastrá cada recuadro hasta su lugar y estirá la esquina para ajustar el tamaño. Se hace una sola vez; el programa se acomoda solo a las líneas impresas.</p></div>
-      <button type="button" id="znClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button></div>
-    <div class="zn-wrap"><div class="zn-stage" id="znStage"><img id="znImg" alt="Remito"></div></div>
-    <div class="zn-legend" id="znLegend"></div>
-    <label class="field-inline zn-rows">Renglones de la tabla
-      <input id="znRows" type="text" inputmode="numeric" maxlength="2" value="14"></label>
-    <p class="hint">«Cantidad»: solo la columna de números, desde el primer renglón hasta el último (no incluyas el título). «OC / cliente»: el espacio de la derecha donde anotan a mano.</p>
-    <div class="dialog-actions">
-      <button type="button" id="znReset" class="btn ghost small">Valores de fábrica</button>
-      <button type="button" id="znCancel" class="btn secondary">Cancelar</button>
-      <button type="button" id="znSave" class="btn primary">Guardar zonas</button>
     </div>
   </dialog>
 
@@ -595,23 +585,10 @@
         <button type="button" id="bridgeTest" class="btn ghost small">Probar conexión</button>
         <span id="bridgeMsg" class="bridge-msg" role="status"></span>
       </div>
-      <p class="hint">Con el puente configurado, “Guardar PDF” lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto; ya no se descarga en el dispositivo. Sin puente, el PDF se descarga como antes.</p>
-    </fieldset>
-    <fieldset class="bridge">
-      <legend>Lector de remitos y aprendizaje</legend>
-      <label class="switch field-switch"><input type="checkbox" id="lectorChk"><span class="slider"></span><span class="switch-text">Leer los remitos automáticamente al escanearlos</span></label>
-      <p class="hint" id="rlSummary">—</p>
-      <div class="row-inline">
-        <button type="button" id="rlZones" class="btn ghost small">Marcar zonas</button>
-        <button type="button" id="rlExport" class="btn ghost small">Exportar aprendizaje</button>
-        <button type="button" id="rlImport" class="btn ghost small">Importar</button>
-        <button type="button" id="rlReset" class="btn ghost small danger-text">Reiniciar</button>
-        <input type="file" id="rlFile" accept="application/json,.json" hidden>
-      </div>
-      <p class="hint">Cada vez que confirmás o corregís una lectura el programa aprende (en este dispositivo, sin enviar nada). Exportá el aprendizaje para pasarlo a otro dispositivo.</p>
+      <p class="hint">Con el puente configurado, “Enviar al borrador de Gmail” (en cada PDF guardado) lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto. Se configura en cada dispositivo desde el que quieras enviar. Sin puente, el PDF se descarga.</p>
     </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">8.2</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">8.3</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
@@ -632,11 +609,9 @@
   <script src="xlsx.js"></script>
   <script src="despachos.js"></script>
   <script src="pdf.js"></script>
-  <script src="digits-model.js"></script>
-  <script src="digits-core.js"></script>
-  <script src="rl.js"></script>
   <script src="scanner.js"></script>
-  <script src="lector.js"></script>
+  <script src="lotes-store.js"></script>
+  <script src="lotes.js"></script>
   <script src="oc.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-// firestore.rules — Reglas de seguridad de la base de usuarios (Cloud Firestore).
+// firestore.rules — Reglas de seguridad de la base de datos (Cloud Firestore), v8.3.
 // Se copian y pegan en: Firebase console > Firestore Database > Reglas > Publicar.
 // (Ver INSTRUCCIONES-USUARIOS.txt, paso 5.)
 //
@@ -9,7 +9,11 @@
 // - Cada persona crea su propio documento al registrarse, siempre como "pendiente" y "usuario".
 // - Cada persona puede leer su documento y cambiar solo su nombre y su último ingreso.
 // - Un administrador aprobado puede ver a todos y cambiar el estado y el rol de los demás (no el suyo).
-// - Nadie puede borrar documentos desde la página.
+// - Nadie puede borrar perfiles desde la página.
+//
+// Subcolección "usuarios/<uid>/lotes" (v8.3): los "PDF guardados" de cada persona (remitos escaneados) y,
+// dentro de cada lote, "partes" con las fotos. Solo la propia persona, con la cuenta aprobada, puede verlos,
+// crearlos, cambiarlos y borrarlos. Ni siquiera un administrador ve los lotes de otros.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -28,6 +32,27 @@ service cloud.firestore {
     }
     function validName(n) {
       return n is string && n.size() >= 2 && n.size() <= 80;
+    }
+    // La propia persona, con la cuenta aprobada.
+    function isOwnerApproved(uid) {
+      return signedIn()
+        && request.auth.uid == uid
+        && exists(myProfilePath())
+        && get(myProfilePath()).data.estado == 'aprobado';
+    }
+    function validLote(d) {
+      return d.keys().hasOnly(['creado', 'actualizado', 'paginas', 'partes', 'tamano', 'subido', 'periodo', 'miniatura',
+                               'tabla', 'estado', 'enviado', 'carpeta', 'archivo'])
+        && d.paginas is int && d.paginas >= 1 && d.paginas <= 300
+        && d.estado in ['pendiente', 'lista', 'enviado']
+        && d.miniatura is string && d.miniatura.size() <= 200000
+        && d.tabla is map;
+    }
+    function validParte(d) {
+      return d.keys().hasOnly(['pagina', 'parte', 'de', 'w', 'h', 'datos'])
+        && d.pagina is int && d.pagina >= 0 && d.pagina < 300
+        && d.parte is int && d.parte >= 0 && d.de is int && d.parte < d.de && d.de <= 20
+        && d.datos is bytes && d.datos.size() <= 950000;
     }
 
     match /usuarios/{uid} {
@@ -57,6 +82,17 @@ service cloud.firestore {
       );
 
       allow delete: if false;
+
+      // PDF guardados (lotes de remitos) de esta persona
+      match /lotes/{loteId} {
+        allow read, delete: if isOwnerApproved(uid);
+        allow create, update: if isOwnerApproved(uid) && validLote(request.resource.data);
+
+        match /partes/{parteId} {
+          allow read, delete: if isOwnerApproved(uid);
+          allow create, update: if isOwnerApproved(uid) && validParte(request.resource.data);
+        }
+      }
     }
 
     // Todo lo demás queda cerrado.

@@ -1,5 +1,32 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.2
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.3
 =======================================================
+
+NOVEDADES v8.3 · PDF GUARDADOS EN TU CUENTA (celular → computadora) Y SECCIÓN REMITOS MÁS SIMPLE
+- ⚠ OBLIGATORIO (una sola vez): volver a publicar las reglas de Firestore. Firebase > Firestore Database > Reglas >
+  borrar todo > pegar el contenido completo del archivo firestore.rules (nuevo) > "Publicar".
+  Sin este paso, al guardar aparece "Firebase no permitió guardar los PDF en tu cuenta" (las fotos no se pierden:
+  quedan en el dispositivo y se suben solas cuando las reglas estén publicadas).
+- "Guardar PDF" ya NO envía nada a Gmail: guarda las fotos en tu cuenta y las muestra en "PDF guardados"
+  (a la izquierda en la computadora, abajo de todo en el celular). Ya no pide la OC ni la tabla al guardar.
+- Desde cualquier dispositivo donde inicies sesión, tocá un PDF guardado: a la izquierda se ven las fotos de los
+  remitos (con "Ampliar") y a la derecha la tabla de recepciones, la OC y el período (Semanal / Quincenal).
+  "Guardar tabla" la deja guardada en la cuenta. Con OC y cantidades, el PDF pasa a "Lista para enviar" y aparece
+  el botón "Enviar" (borrador de Gmail + Drive, como antes). También está "Descargar PDF".
+- Para enviar desde la computadora, el puente de Google tiene que estar configurado también en esa computadora
+  (Ajustes > Puente a Google Drive y Gmail: la misma dirección y clave que en el celular).
+- Sin internet: el PDF queda guardado en el celular ("Sin subir") y se sube solo cuando vuelve la conexión.
+- Los enviados quedan en "Enviados" y se borran solos a los 15 días (el PDF ya quedó en Drive).
+- Espacio gratis: 1 GB en total (Firestore, plan Spark). La lista muestra el espacio usado. Un lote de 10 remitos
+  ocupa entre 2 y 8 MB. (Firebase Storage, el servicio "para archivos", ya no es gratuito: por eso se usa Firestore.)
+- SE QUITÓ el lector automático de remitos (v8.0-v8.2): la revisión de lecturas, cliente, OC, semáforo, "Marcar
+  zonas" y el aprendizaje. No era confiable y mostraba datos que no hacen falta. La tabla de recepciones se carga
+  a mano mirando las fotos. (El lector se puede recuperar del historial de GitHub si alguna vez hiciera falta.)
+- ÍCONOS: se vuelve a subir la carpeta "icons", que faltaba en GitHub (sin ella el ícono no aparecía en la
+  pantalla de inicio y la copia sin internet no llegaba a instalarse).
+- ARCHIVOS NUEVOS: lotes.js, lotes-store.js. CAMBIARON: index.html, styles.css, scanner.js, auth.js, oc.js,
+  despachos.js, sw.js, firebase-sdk.js, firestore.rules, INSTRUCCIONES-USUARIOS.txt.
+  SE BORRARON (ya no se usan): lector.js, digits-core.js, digits-model.js, rl.js.
+
 
 NOVEDADES v8.2 · INGRESO Y REGISTRO DE USUARIOS + ÍCONO DE LA APLICACIÓN
 - Pantalla de inicio con "Iniciar sesión", "Crear una cuenta" y "¿Olvidaste tu contraseña?".
