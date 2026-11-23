@@ -1,5 +1,23 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.1
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.2
 =======================================================
+
+NOVEDADES v8.2 · INGRESO Y REGISTRO DE USUARIOS + ÍCONO DE LA APLICACIÓN
+- Pantalla de inicio con "Iniciar sesión", "Crear una cuenta" y "¿Olvidaste tu contraseña?".
+  Las cuentas se guardan gratis en Firebase (Google, plan Spark). Las cuentas nuevas quedan pendientes hasta que
+  un administrador las aprueba desde el menú de la cuenta > "Administrar usuarios".
+- CONFIGURACIÓN OBLIGATORIA (una sola vez): seguir INSTRUCCIONES-USUARIOS.txt y completar firebase-config.js.
+  Mientras tanto la página avisa y deja seguir con "Continuar sin iniciar sesión".
+- La cámara se enciende recién después de iniciar sesión.
+- ÍCONO: faltaba la carpeta "icons" en el repositorio, por eso al instalar la página en el celular no se veía
+  el ícono (y además la copia sin internet no llegaba a guardarse). Ahora están todos: icons/icon-192.png,
+  icon-512.png, icon-maskable-192.png, icon-maskable-512.png, apple-touch-icon.png, favicon-32.png y favicon-16.png.
+  Si ya la tenías instalada: en iPhone borrá el acceso de la pantalla de inicio y volvé a agregarlo
+  (Safari > Compartir > "Añadir a pantalla de inicio"). En Android se actualiza solo en uno o dos días;
+  para verlo ya, desinstalala y volvé a instalarla.
+- ARCHIVOS NUEVOS: auth.js, firebase-sdk.js, firebase-config.js, firestore.rules (se pega en Firebase, ver
+  instrucciones), INSTRUCCIONES-USUARIOS.txt y la carpeta icons (7 imágenes).
+  Cambiaron: index.html, styles.css, scanner.js, sw.js y manifest.webmanifest.
+
 
 NOVEDADES v8.1: el lector YA NO lee fecha ni N° de remito (se quitaron de la pantalla de revisión y de las zonas).
 El cliente se deduce de las cantidades comparándolas con todas las entregas del Excel del mes. Solo se leen cliente, OC y cantidades.

@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "8.1";
+  const APP_VERSION = "8.2";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 
@@ -953,7 +953,7 @@
   filterSelect.value = settings.filterMode || "mejorado";
   syncCards();
   updateBusyUI();
-  startCamera();
+  suspended = true;                  // la cámara se enciende recién con la sesión iniciada (auth.js)
   liveLoop();
 
   // ---------- Cambio de sección (lo usa oc.js) ----------
@@ -974,6 +974,9 @@
     parseNumber, formatQty, totals: () => totalsState, persistTotals, refresh: () => syncCards(), updateTotalsInfo,
     onPageReady: null, onSync: null
   };
+  // Con el ingreso de usuarios (auth.js), la cámara espera a que la cuenta esté habilitada.
+  if (window.LAGAuth) window.LAGAuth.onUnlock(() => window.RemitosApp.setActive(true));
+  else window.RemitosApp.setActive(true);
 
   // ---------- Instalación como aplicación ----------
   const installBtn = $("installBtn");
