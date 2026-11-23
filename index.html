@@ -8,6 +8,7 @@
   <meta name="theme-color" content="#741420">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -15,7 +16,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="auth-locked">
   <!-- Íconos -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
@@ -31,7 +32,172 @@
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22 6 12 13 2 6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
   </svg>
+
+  <!-- ===== Ingreso y registro de usuarios (auth.js) ===== -->
+  <div id="authScreen" class="auth">
+    <div class="auth-shell">
+      <aside class="auth-brand">
+        <div class="auth-logo-wrap"><img class="auth-logo" src="logo.png" alt="LAG Panificados SRL"></div>
+        <div class="auth-brand-copy">
+          <p class="auth-kicker">Sistema de gestión</p>
+          <h2>Remitos y facturación</h2>
+          <p class="auth-lead">Escaneo de remitos, órdenes de compra y control de la facturación, en un solo lugar.</p>
+          <ul class="auth-features">
+            <li><svg class="i"><use href="#i-camera"/></svg><span>Remitos escaneados y PDF listos para enviar</span></li>
+            <li><svg class="i"><use href="#i-file"/></svg><span>Seguimiento de lo facturado en cada OC</span></li>
+            <li><svg class="i"><use href="#i-shield"/></svg><span>Acceso solo para usuarios autorizados</span></li>
+          </ul>
+        </div>
+        <p class="auth-brand-foot">© <span class="auth-year">2026</span> LAG Panificados SRL</p>
+      </aside>
+
+      <section class="auth-panel">
+        <!-- Cargando -->
+        <div class="auth-view auth-center" data-v="splash">
+          <span class="spinner big-spinner" aria-hidden="true"></span>
+          <p class="auth-splash-txt" id="authSplashText">Cargando…</p>
+          <p class="auth-slow">Está tardando más de lo normal. Revisá la conexión a internet y <a href="./">volvé a cargar la página</a>.</p>
+        </div>
+
+        <!-- Iniciar sesión -->
+        <div class="auth-view" data-v="login" hidden>
+          <header class="auth-head">
+            <h3 tabindex="-1">Iniciar sesión</h3>
+            <p>Ingresá con tu correo y tu contraseña.</p>
+          </header>
+          <form class="auth-form" id="loginForm" novalidate>
+            <div class="af-field">
+              <label for="loginEmail">Correo electrónico</label>
+              <div class="af-input"><svg class="i"><use href="#i-mail"/></svg>
+                <input id="loginEmail" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="nombre@empresa.com" required></div>
+            </div>
+            <div class="af-field">
+              <div class="af-label-row"><label for="loginPass">Contraseña</label><button type="button" class="auth-link small" data-go="reset">¿Olvidaste tu contraseña?</button></div>
+              <div class="af-input"><svg class="i"><use href="#i-lock"/></svg>
+                <input id="loginPass" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
+                <button type="button" class="af-eye" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="i"><use href="#i-eye"/></svg></button></div>
+            </div>
+            <p class="auth-alert" id="loginMsg" role="alert" hidden></p>
+            <button type="submit" class="btn primary auth-submit"><span class="btn-label">Ingresar</span><span class="spinner btn-spin" aria-hidden="true"></span></button>
+          </form>
+          <p class="auth-switch">¿Todavía no tenés cuenta? <button type="button" class="auth-link" data-go="register">Crear una cuenta</button></p>
+        </div>
+
+        <!-- Crear cuenta -->
+        <div class="auth-view" data-v="register" hidden>
+          <header class="auth-head">
+            <h3 tabindex="-1">Crear cuenta</h3>
+            <p>Completá tus datos. Un administrador va a habilitar tu acceso.</p>
+          </header>
+          <form class="auth-form" id="registerForm" novalidate>
+            <div class="af-field">
+              <label for="regName">Nombre y apellido</label>
+              <div class="af-input"><svg class="i"><use href="#i-user"/></svg>
+                <input id="regName" type="text" autocomplete="name" autocapitalize="words" maxlength="80" placeholder="Ej.: María Gómez" required></div>
+            </div>
+            <div class="af-field">
+              <label for="regEmail">Correo electrónico</label>
+              <div class="af-input"><svg class="i"><use href="#i-mail"/></svg>
+                <input id="regEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="nombre@empresa.com" required></div>
+            </div>
+            <div class="af-field">
+              <label for="regPass">Contraseña</label>
+              <div class="af-input"><svg class="i"><use href="#i-lock"/></svg>
+                <input id="regPass" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres" required aria-describedby="regPassHelp">
+                <button type="button" class="af-eye" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="i"><use href="#i-eye"/></svg></button></div>
+              <div class="pw-meter" id="pwMeter" data-score="0" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+              <small class="af-help" id="regPassHelp">Usá al menos 8 caracteres, con letras y números.</small>
+            </div>
+            <div class="af-field">
+              <label for="regPass2">Repetir contraseña</label>
+              <div class="af-input"><svg class="i"><use href="#i-lock"/></svg>
+                <input id="regPass2" type="password" autocomplete="new-password" placeholder="Escribila de nuevo" required></div>
+            </div>
+            <p class="auth-alert" id="registerMsg" role="alert" hidden></p>
+            <button type="submit" class="btn primary auth-submit"><span class="btn-label">Crear cuenta</span><span class="spinner btn-spin" aria-hidden="true"></span></button>
+          </form>
+          <p class="auth-switch">¿Ya tenés cuenta? <button type="button" class="auth-link" data-go="login">Iniciar sesión</button></p>
+        </div>
+
+        <!-- Recuperar contraseña -->
+        <div class="auth-view" data-v="reset" hidden>
+          <header class="auth-head">
+            <h3 tabindex="-1">Recuperar contraseña</h3>
+            <p>Te enviamos un enlace por correo para que elijas una contraseña nueva.</p>
+          </header>
+          <form class="auth-form" id="resetForm" novalidate>
+            <div class="af-field">
+              <label for="resetEmail">Correo electrónico</label>
+              <div class="af-input"><svg class="i"><use href="#i-mail"/></svg>
+                <input id="resetEmail" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="nombre@empresa.com" required></div>
+            </div>
+            <p class="auth-alert" id="resetMsg" role="alert" hidden></p>
+            <button type="submit" class="btn primary auth-submit"><span class="btn-label">Enviar enlace</span><span class="spinner btn-spin" aria-hidden="true"></span></button>
+          </form>
+          <p class="auth-switch"><button type="button" class="auth-link" data-go="login">Volver a iniciar sesión</button></p>
+        </div>
+
+        <!-- Cuenta pendiente de aprobación -->
+        <div class="auth-view auth-center" data-v="pending" hidden>
+          <span class="auth-badge warn"><svg class="i"><use href="#i-clock"/></svg></span>
+          <h3 tabindex="-1">Cuenta pendiente de aprobación</h3>
+          <p class="auth-text">Hola, <b class="js-name"></b>. Tu cuenta <b class="js-email"></b> se creó correctamente. Un administrador tiene que habilitarla antes de que puedas ingresar.</p>
+          <p class="auth-alert" id="pendingMsg" role="status" hidden></p>
+          <div class="auth-actions">
+            <button type="button" class="btn primary auth-submit" id="pendingCheck"><span class="btn-label">Ya me aprobaron, volver a comprobar</span><span class="spinner btn-spin" aria-hidden="true"></span></button>
+            <button type="button" class="btn secondary js-logout"><svg class="i"><use href="#i-logout"/></svg>Cerrar sesión</button>
+          </div>
+        </div>
+
+        <!-- Cuenta deshabilitada -->
+        <div class="auth-view auth-center" data-v="blocked" hidden>
+          <span class="auth-badge danger"><svg class="i"><use href="#i-ban"/></svg></span>
+          <h3 tabindex="-1">Acceso deshabilitado</h3>
+          <p class="auth-text">La cuenta <b class="js-email"></b> no tiene acceso a la aplicación. Si creés que es un error, consultá con el administrador.</p>
+          <div class="auth-actions">
+            <button type="button" class="btn secondary js-logout"><svg class="i"><use href="#i-logout"/></svg>Cerrar sesión</button>
+          </div>
+        </div>
+
+        <!-- Error al verificar la cuenta -->
+        <div class="auth-view auth-center" data-v="error" hidden>
+          <span class="auth-badge danger"><svg class="i"><use href="#i-alert"/></svg></span>
+          <h3 tabindex="-1">No se pudo verificar tu cuenta</h3>
+          <p class="auth-text" id="authErrorText"></p>
+          <div class="auth-actions">
+            <button type="button" class="btn primary auth-submit" id="authRetry"><span class="btn-label">Reintentar</span><span class="spinner btn-spin" aria-hidden="true"></span></button>
+            <button type="button" class="btn secondary js-logout" id="authErrorLogout"><svg class="i"><use href="#i-logout"/></svg>Cerrar sesión</button>
+          </div>
+        </div>
+
+        <!-- Firebase sin configurar -->
+        <div class="auth-view auth-center" data-v="setup" hidden>
+          <span class="auth-badge"><svg class="i"><use href="#i-tool"/></svg></span>
+          <h3 tabindex="-1">Falta activar el registro de usuarios</h3>
+          <p class="auth-text">Para ingresar con usuario y contraseña hay que conectar la página con Firebase (gratuito). Seguí los pasos de <b>INSTRUCCIONES-USUARIOS.txt</b> y completá el archivo <b>firebase-config.js</b>.</p>
+          <div class="auth-actions">
+            <button type="button" class="btn secondary" id="authSkip">Continuar sin iniciar sesión</button>
+          </div>
+        </div>
+
+        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v8.2</span></p>
+      </section>
+    </div>
+  </div>
 
   <header class="topbar">
     <div class="brand">
@@ -42,9 +208,22 @@
       </div>
     </div>
     <div class="top-actions">
-      <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg>Instalar</button>
+      <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg><span class="hide-sm">Instalar</span></button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v8.1</span>
+      <span class="ver" id="verTag">v8.2</span>
+      <div class="user-menu" id="userMenu" hidden>
+        <button type="button" class="user-btn" id="userBtn" aria-haspopup="true" aria-expanded="false" aria-controls="userPop" title="Tu cuenta">
+          <span class="avatar" id="userAvatar">·</span><span class="user-first hide-sm" id="userFirst"></span><svg class="i chev"><use href="#i-chevron"/></svg>
+        </button>
+        <div class="user-pop" id="userPop" hidden>
+          <div class="user-pop-head">
+            <span class="avatar lg" id="userAvatarLg">·</span>
+            <div class="user-pop-id"><strong id="userName"></strong><small id="userEmail"></small><span class="role-tag" id="userRole"></span></div>
+          </div>
+          <button type="button" class="user-pop-item" id="adminBtn" hidden><svg class="i"><use href="#i-users"/></svg>Administrar usuarios<span class="cnt" id="pendingCount" hidden></span></button>
+          <button type="button" class="user-pop-item danger-text js-logout"><svg class="i"><use href="#i-logout"/></svg>Cerrar sesión</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -368,6 +547,27 @@
     </div>
   </dialog>
 
+  <!-- Administración de usuarios (solo administradores) -->
+  <dialog id="usersDialog" class="dlg wide-dlg users-dlg">
+    <div class="dlg-head">
+      <span class="auth-badge sm"><svg class="i"><use href="#i-users"/></svg></span>
+      <div>
+        <h3>Usuarios</h3>
+        <p class="hint">Aprobá las cuentas nuevas y elegí quién puede administrar.</p>
+      </div>
+      <button type="button" id="usersClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="users-tools">
+      <div class="seg" id="usersSeg" role="radiogroup" aria-label="Filtro de usuarios">
+        <button type="button" role="radio" class="seg-btn" data-f="pendiente" aria-checked="true">Pendientes <span id="usersPendN"></span></button>
+        <button type="button" role="radio" class="seg-btn" data-f="todos" aria-checked="false">Todos <span id="usersAllN"></span></button>
+      </div>
+      <button type="button" id="usersRefresh" class="btn ghost small"><svg class="i"><use href="#i-rotate"/></svg>Actualizar</button>
+    </div>
+    <p id="usersMsg" class="err users-msg" role="alert"></p>
+    <div id="usersList" class="users-list"></div>
+  </dialog>
+
   <!-- Vista previa -->
   <dialog id="previewDialog" class="dlg preview-dlg">
     <button type="button" id="previewClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
@@ -411,13 +611,16 @@
       <p class="hint">Cada vez que confirmás o corregís una lectura el programa aprende (en este dispositivo, sin enviar nada). Exportá el aprendizaje para pasarlo a otro dispositivo.</p>
     </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">8.1</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">8.2</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
     </div>
   </dialog>
 
+  <script src="firebase-sdk.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth.js"></script>
   <script src="logo-pdf.js"></script>
   <script src="crop.js"></script>
   <script src="enhance.js"></script>

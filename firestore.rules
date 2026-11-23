@@ -1,0 +1,67 @@
+// firestore.rules — Reglas de seguridad de la base de usuarios (Cloud Firestore).
+// Se copian y pegan en: Firebase console > Firestore Database > Reglas > Publicar.
+// (Ver INSTRUCCIONES-USUARIOS.txt, paso 5.)
+//
+// Colección "usuarios": un documento por persona, con el mismo identificador (uid) que su cuenta.
+//   nombre, email, estado ("pendiente" | "aprobado" | "deshabilitado"), rol ("usuario" | "admin"),
+//   creado, ultimoIngreso, actualizado
+//
+// - Cada persona crea su propio documento al registrarse, siempre como "pendiente" y "usuario".
+// - Cada persona puede leer su documento y cambiar solo su nombre y su último ingreso.
+// - Un administrador aprobado puede ver a todos y cambiar el estado y el rol de los demás (no el suyo).
+// - Nadie puede borrar documentos desde la página.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function myProfilePath() {
+      return /databases/$(database)/documents/usuarios/$(request.auth.uid);
+    }
+    function isAdmin() {
+      return signedIn()
+        && exists(myProfilePath())
+        && get(myProfilePath()).data.rol == 'admin'
+        && get(myProfilePath()).data.estado == 'aprobado';
+    }
+    function validName(n) {
+      return n is string && n.size() >= 2 && n.size() <= 80;
+    }
+
+    match /usuarios/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nombre', 'email', 'estado', 'rol', 'creado', 'ultimoIngreso'])
+        && validName(request.resource.data.nombre)
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.estado == 'pendiente'
+        && request.resource.data.rol == 'usuario'
+        && request.resource.data.creado == request.time;
+
+      allow update: if signedIn() && (
+        // la propia persona: solo nombre y último ingreso
+        (request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre', 'ultimoIngreso'])
+          && validName(request.resource.data.nombre))
+        ||
+        // un administrador, sobre otra cuenta: estado y rol
+        (isAdmin() && request.auth.uid != uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'rol', 'actualizado'])
+          && request.resource.data.estado in ['pendiente', 'aprobado', 'deshabilitado']
+          && request.resource.data.rol in ['usuario', 'admin'])
+      );
+
+      allow delete: if false;
+    }
+
+    // Todo lo demás queda cerrado.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

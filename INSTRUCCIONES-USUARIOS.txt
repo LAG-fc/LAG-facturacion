@@ -1,0 +1,105 @@
+REGISTRO E INGRESO DE USUARIOS · LAG PANIFICADOS SRL — versión 8.2
+=====================================================================
+
+QUÉ HACE
+- Al abrir la página aparece la pantalla de ingreso. La cámara, los remitos y la facturación quedan ocultos
+  hasta que la persona inicia sesión con una cuenta APROBADA.
+- "Crear una cuenta": nombre y apellido, correo y contraseña (mínimo 8 caracteres, con letras y números).
+  Las cuentas nuevas quedan PENDIENTES hasta que un administrador las aprueba.
+- "¿Olvidaste tu contraseña?": Firebase manda un correo con un enlace para elegir una contraseña nueva.
+- Arriba a la derecha está el menú de la cuenta (círculo con las iniciales): datos de la cuenta,
+  "Administrar usuarios" (solo administradores) y "Cerrar sesión".
+- Administrar usuarios: Aprobar, Rechazar, Deshabilitar, Habilitar, Hacer administrador / Quitar administrador.
+  Cuando hay cuentas esperando aprobación aparece un punto amarillo sobre tus iniciales.
+- Sin internet: si la sesión ya estaba iniciada en ese dispositivo, la aplicación abre igual.
+  Para iniciar sesión por primera vez en un dispositivo hace falta internet.
+
+DÓNDE SE GUARDAN LOS DATOS (GRATIS)
+- Se usa Firebase de Google, plan "Spark" (gratuito, NO pide tarjeta de crédito y nunca genera cobros:
+  si alguna vez se pasara un límite diario, el servicio se frena hasta el día siguiente).
+  · Firebase Authentication: guarda las cuentas. Las contraseñas las guarda Google cifradas; nadie puede verlas,
+    ni siquiera el administrador.
+  · Cloud Firestore: guarda el perfil de cada usuario (nombre, correo, estado, rol, fecha de registro y
+    último ingreso) en la colección "usuarios". Límites gratis: 50.000 lecturas y 20.000 escrituras por día
+    y 1 GB; esta página usa una parte mínima.
+- Lo que la página ya guardaba en cada dispositivo (OC cargadas, ajustes, puente a Google, aprendizaje del
+  lector) sigue igual: queda en ese dispositivo, no en la cuenta del usuario.
+
+
+CONFIGURACIÓN (UNA SOLA VEZ, unos 15 minutos)
+---------------------------------------------
+Mientras no se complete, la página muestra el aviso "Falta activar el registro de usuarios" y deja seguir
+usándola con el botón "Continuar sin iniciar sesión".
+
+PASO 1 — Crear el proyecto de Firebase
+  1. Entrá a https://console.firebase.google.com con la cuenta de Google de la panadería.
+  2. "Crear un proyecto" (o "Agregar proyecto"). Nombre: por ejemplo  lag-panificados
+  3. Google Analytics: desactivalo (no hace falta). Tocá "Crear proyecto" y esperá.
+
+PASO 2 — Registrar la página web y copiar la configuración
+  1. En la portada del proyecto tocá el ícono  </>  (Web).
+  2. Apodo de la app: por ejemplo  Remitos web.  NO marques "Firebase Hosting". Tocá "Registrar app".
+  3. Aparece un bloque  const firebaseConfig = { apiKey: "...", authDomain: "...", ... }
+  4. En GitHub abrí el archivo firebase-config.js, tocá el lápiz (Edit) y copiá cada valor entre las comillas:
+       apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId
+     Ejemplo de cómo debe quedar (con TUS datos):
+       apiKey: "AIzaSyD-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+       authDomain: "lag-panificados.firebaseapp.com",
+       projectId: "lag-panificados",
+       ...
+     "Commit changes".
+  (Si después necesitás volver a ver estos datos: ⚙ Configuración del proyecto > General > Tus apps.)
+  Estos datos NO son secretos: Firebase los espera visibles en la página. La seguridad la dan los pasos 5 y 6.
+
+PASO 3 — Activar el ingreso con correo y contraseña
+  1. Menú de la izquierda: Compilación (Build) > Authentication > "Comenzar".
+  2. Pestaña "Método de acceso" (Sign-in method) > "Correo electrónico/contraseña".
+  3. Activá el PRIMER interruptor (Correo electrónico/contraseña). El segundo ("vínculo de correo") dejalo apagado.
+     "Guardar".
+  4. (Recomendado) Authentication > Plantillas > ícono del lápiz > Idioma de la plantilla: Español.
+     Así el correo para recuperar la contraseña llega en castellano.
+
+PASO 4 — Crear la base de datos
+  1. Menú de la izquierda: Compilación > Firestore Database > "Crear base de datos".
+  2. Si pregunta la edición, elegí "Standard". El ID de la base dejalo como  (default).
+  3. Ubicación: southamerica-east1 (São Paulo), la más cercana a Argentina. (No se puede cambiar después.)
+  4. Elegí "Comenzar en modo de producción" y "Crear".
+
+PASO 5 — Publicar las reglas de seguridad
+  1. Firestore Database > pestaña "Reglas".
+  2. Borrá todo lo que aparece y pegá el contenido completo del archivo firestore.rules (está en el repositorio).
+  3. "Publicar".
+  Estas reglas impiden que alguien se apruebe solo, se haga administrador o lea los datos de otros usuarios.
+
+PASO 6 — Autorizar la dirección de la página
+  1. Authentication > pestaña "Configuración" (Settings) > "Dominios autorizados" > "Agregar dominio".
+  2. Escribí la dirección de tu página SIN https:// y sin nada después de la barra, por ejemplo:
+       lag-fc.github.io
+  3. "Agregar".
+
+PASO 7 — Crear tu cuenta de administrador (la primera vez)
+  1. Abrí la página (con internet) > "Crear una cuenta" y completá tus datos. Vas a ver "Cuenta pendiente de aprobación".
+  2. En Firebase: Firestore Database > pestaña "Datos" > colección "usuarios" > tocá el documento que tiene tu correo.
+  3. Cambiá dos campos (tocá el valor, escribí el nuevo y "Actualizar"):
+       estado:  aprobado
+       rol:     admin
+  4. Volvé a la página y tocá "Ya me aprobaron, volver a comprobar".
+  Desde ahora, a las demás personas las aprobás desde la página: menú de tu cuenta > "Administrar usuarios".
+
+
+USO DIARIO
+----------
+- Alguien nuevo: que entre a la página y toque "Crear una cuenta". Vos lo aprobás en "Administrar usuarios".
+- Quitarle el acceso a alguien: "Deshabilitar". Deja de poder entrar la próxima vez que abra la aplicación.
+- Borrar una cuenta por completo (opcional): Firebase > Authentication > Usuarios > ⋮ > "Borrar cuenta",
+  y en Firestore Database > usuarios > su documento > ⋮ > "Borrar documento".
+- Contraseña olvidada: "¿Olvidaste tu contraseña?" en la pantalla de ingreso. El correo llega desde
+  noreply@<tu-proyecto>.firebaseapp.com; si no aparece, revisar "Correo no deseado".
+- Siempre conviene que haya al menos DOS administradores, por si uno pierde el acceso.
+
+PROBLEMAS FRECUENTES (el mensaje de la página indica el paso a revisar)
+- "Esta dirección web no está autorizada en Firebase" → paso 6.
+- "El ingreso con correo y contraseña no está activado" → paso 3.
+- "Firebase no permitió leer tu perfil" → paso 5 (reglas sin publicar o pegadas incompletas).
+- "Todavía no se creó la base de datos Firestore" → paso 4.
+- "Los datos de firebase-config.js no son correctos" → paso 2.
