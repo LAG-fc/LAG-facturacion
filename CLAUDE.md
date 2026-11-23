@@ -89,7 +89,20 @@ The automatic handwriting reader (v8.0–8.2: `lector.js`, `digits-core.js`, `di
 
 Web pages can't call iOS Live Text, so an iOS Shortcut named **"LAG Cantidades"** acts as the bridge. The owner builds it once by hand; the steps are in the in-app help dialog `#lecHelpDialog`. It takes Share Sheet images, runs "Extract Text from Image" and copies the result to the clipboard.
 
-1. In the lote dialog, `lotes.js` builds a "hoja de lectura". It decodes each page, runs `Lectura.findRows` to find the printed table lines (tolerant to slight tilt), and keeps only rows with ink (`inkRatio`). It stacks those rows with printed labels (`HOJA n`, `Rnn =`) and blanks out the vertical table rules. A page whose table isn't found is added whole, as `HOJA n COMPLETA`.
+1. In the lote dialog, `lotes.js` builds a "hoja de lectura" (`analyzePage`/`buildSheet`). The page is decoded and downscaled to a 1000 px-wide grayscale image, then analyzed:
+   - **LAG remito form (v8.5, mode `fila`).** It has a CANTIDAD column and a DETALLE column with the 18 products pre-printed in `Lectura.FILAS_REMITO` order, followed by one blank row: 19 body rows in total. `Lectura.findTable` handles this case:
+     1. It finds the long vertical CANTIDAD/DETALLE separator (tilt-tolerant search).
+     2. It measures the horizontal-line tilt separately from the vertical one, because CamScanner pages are slightly sheared.
+     3. It finds the dotted row lines as coverage peaks, using a lighter threshold than for text.
+     4. It anchors on the solid table bottom and estimates the row height from the autocorrelation of the line profile.
+     5. It snaps the 19-row grid to the peaks.
+     6. It rejects other forms when fewer than 9 boundaries snap or too many lines fall off-grid.
+
+     Only CANTIDAD cells that have ink in the middle band are cropped. People write sitting on the lower line, so the crop gets extra bottom padding. Each crop is labelled `Fnn =`, and row k maps to product k.
+   - **Any other table (mode `renglon`).** `Lectura.findRows` produces full-width rows labelled `Rnn =`, and the product is matched by description.
+   - **No table found.** The whole page is added as `HOJA n COMPLETA`.
+
+   Tested against 15 real remito photos; they are not in the repo, so ask the owner for samples if needed.
 2. It shares that image via `navigator.share({ files })` with only files, so the Shortcut receives a pure image input.
 3. "Pegar lectura" calls `navigator.clipboard.readText()`, with a textarea fallback.
 4. `Lectura.parse` handles labels split across lines, fixes confusable characters (`l2O` → 120) and skips "OC ####" notes.

@@ -201,7 +201,7 @@
           </div>
         </div>
 
-        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v8.4</span></p>
+        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v8.5</span></p>
       </section>
     </div>
   </div>
@@ -217,7 +217,7 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg><span class="hide-sm">Instalar</span></button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v8.4</span>
+      <span class="ver" id="verTag">v8.5</span>
       <div class="user-menu" id="userMenu" hidden>
         <button type="button" class="user-btn" id="userBtn" aria-haspopup="true" aria-expanded="false" aria-controls="userPop" title="Tu cuenta">
           <span class="avatar" id="userAvatar">·</span><span class="user-first hide-sm" id="userFirst"></span><svg class="i chev"><use href="#i-chevron"/></svg>
@@ -564,7 +564,7 @@
       <h3 id="lecHelpTitle">Atajo «LAG Cantidades» (una sola vez)</h3>
       <button type="button" id="lecHelpClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
     </div>
-    <p class="hint">El iPhone lee muy bien la letra a mano, pero una página web no puede usar ese lector directamente. Este Atajo hace de puente: recibe la hoja con los renglones de los remitos, la lee y copia el texto. Se crea una sola vez, en el iPhone, y es gratis.</p>
+    <p class="hint">El iPhone lee muy bien la letra a mano, pero una página web no puede usar ese lector directamente. Este Atajo hace de puente: la página le pasa una hoja armada con <b>solo la columna CANTIDAD</b> de cada remito y el <b>número de fila</b> (F01 = Pan mignon blanco, F02 = Pan mignon de salvado… en el orden impreso del remito); el Atajo la lee y copia el texto. Se crea una sola vez, en el iPhone, y es gratis.</p>
     <ol class="help-steps">
       <li>Abrí la app <b>Atajos</b> (viene con el iPhone; si la borraste, bajala gratis del App Store).</li>
       <li>Tocá <b>+</b> (arriba a la derecha) para crear un atajo nuevo.</li>
@@ -577,10 +577,10 @@
     </ol>
     <p class="help-sub">Cómo se usa</p>
     <ol class="help-steps">
-      <li>Abrí un PDF guardado (o tocá <b>Leer ahora</b> después de “Guardar PDF”) y tocá <b>Leer cantidades</b>.</li>
+      <li>Abrí un PDF guardado (o tocá <b>Leer ahora</b> después de “Guardar PDF”) y tocá <b>Leer cantidades</b>. Usalo siempre desde la página: si corrés el Atajo desde Fotos, lee el remito entero (con direcciones, CUIT, anotaciones…).</li>
       <li>En la hoja para compartir elegí <b>LAG Cantidades</b>. Si no aparece, deslizá la fila de íconos hasta el final → <b>Editar acciones</b> y agregalo a Favoritos. La primera vez puede pedir permiso: elegí <b>Permitir siempre</b>.</li>
       <li>Cuando se cierre, tocá <b>Pegar lectura</b> y después <b>Pegar</b> en el globito del iPhone.</li>
-      <li>Las cantidades pasan solas a la tabla (resaltadas en amarillo) y se guardan en tu cuenta: revisalas con las fotos, acá o en la computadora.</li>
+      <li>Cada cantidad se asigna al producto de su fila y se suma con la de los otros remitos (por ejemplo 492,18+509,28). Pasan solas a la tabla (resaltadas en amarillo) y se guardan en tu cuenta: revisalas con las fotos, acá o en la computadora.</li>
     </ol>
     <div class="dialog-actions"><button type="button" id="lecHelpOk" class="btn primary">Entendido</button></div>
   </dialog>
@@ -642,7 +642,7 @@
       <p class="hint">Usa el reconocimiento de letra del iPhone (el mismo de “Texto en vivo”) a través de un Atajo. Las cantidades leídas pasan a la tabla de recepciones para revisarlas.</p>
     </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">8.4</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">8.5</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>

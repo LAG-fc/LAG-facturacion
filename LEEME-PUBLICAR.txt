@@ -1,5 +1,23 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.4
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.5
 =======================================================
+
+NOVEDADES v8.5 · EL ATAJO LEE SOLO LAS CANTIDADES Y EL NÚMERO DE FILA
+- La página reconoce el formulario del remito de LAG (columna CANTIDAD + los 18 productos impresos en DETALLE).
+  Encuentra la tabla aunque la foto esté apenas torcida y aunque las líneas punteadas se vean poco, y cuenta las
+  filas desde el borde de abajo de la tabla (19 filas: los 18 productos y una vacía).
+- La hoja que recibe el Atajo tiene SOLO la columna CANTIDAD de las filas escritas, con su número:
+      HOJA 1
+      F01 = 492,18
+  Ya no aparecen direcciones, CUIT, "Unidad 60", "64 bolsas", "OC 93034" ni nada de la columna DETALLE.
+- Cada cantidad se asigna al producto de su fila (F01 = PAN MIGNON BLANCO, F02 = PAN MIGNON DE SALVADO, … F18 =
+  PAN CIABATTA) y se suman las de todos los remitos del lote (por ejemplo 492,18+509,28+509,26).
+- Si una foto no es ese remito, se usa la lectura anterior (renglones completos y producto por descripción).
+- Probado con las 15 fotos reales del PDF de CamScanner: en las 15 se encontró la tabla y la cantidad quedó en la
+  fila 1 (PAN MIGNON BLANCO).
+- El Atajo «LAG Cantidades» NO cambia. Importante: usalo desde la página (botón "Leer cantidades"); si lo corrés
+  desde Fotos lee el remito entero.
+- CAMBIARON: lectura.js, lotes.js, index.html, scanner.js, sw.js.
+
 
 NOVEDADES v8.4 · CANTIDADES LEÍDAS CON EL IPHONE (Atajo «LAG Cantidades»)
 - El iPhone lee muy bien la letra a mano, pero una página web no puede usar ese lector directamente. Por eso se usa

@@ -1,4 +1,5 @@
-// lectura.js — Lectura de las cantidades con el iPhone (v8.4). Funciones puras (sin pantalla), probadas en Node.
+// lectura.js — Lectura de las cantidades con el iPhone (v8.4; v8.5: solo la columna CANTIDAD del remito de LAG).
+// Funciones puras (sin pantalla), probadas en Node con fotos reales de remitos.
 //
 // El iPhone reconoce muy bien la letra a mano ("Texto en vivo"), pero una página web no puede usar ese
 // reconocimiento directamente. El camino es:
@@ -107,6 +108,159 @@
     return { x0: x0 / w, x1: x1 / w, rows, vlines: vlines.map((v) => ({ x0: (v.x0 - 1) / w, x1: (v.x1 + 1) / w })), thr };
   }
 
+  // ---------------------------------------------------------------- remito de LAG (formulario impreso)
+  // El remito tiene una tabla con la columna CANTIDAD (a la izquierda, escrita a mano) y la columna DETALLE con los
+  // 18 productos ya impresos, siempre en el mismo orden. La fila alcanza para saber el producto. Las anotaciones de
+  // la derecha ("Unidad 60", "64 bolsas", "OC 93034") no se leen.
+  const FILAS_REMITO = ["PAN MIGNON BLANCO", "PAN MIGNON DE SALVADO", "PAN FRANCES", "PAN MIGNON BLANCO SIN SAL",
+    "PAN DE SALVADO SIN SAL", "FIGACITAS DE MANTECA", "LIBRITOS DE GRASA", "BIZCOCHUELO DE VAINILLA 50 X 80",
+    "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE", "SANDWICH DE MIGA TRIPLE",
+    "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"];
+
+  // Línea vertical más larga (tolerando una leve inclinación) con x entre xa y xb. {x (en y = yc), m (dx/dy), y0, y1, len}
+  function longestVertical(dark, w, h, xa, xb, ya, yb, yc) {
+    const gap = Math.max(4, Math.round(h * 0.006));
+    let best = null;
+    for (let mi = -6; mi <= 6; mi++) {
+      const m = mi * 0.004;                                 // hasta ±1,4°
+      for (let xr = Math.round(xa); xr <= Math.round(xb); xr++) {
+        let s = -1, last = -1, bl = 0, b0 = 0, b1 = 0;
+        for (let y = ya; y < yb; y++) {
+          const x = Math.round(xr + m * (y - yc));
+          if (x < 1 || x >= w - 1) continue;
+          const o = y * w;
+          if (dark[o + x] || dark[o + x - 1] || dark[o + x + 1]) {
+            if (s < 0 || y - last > gap) s = y;
+            last = y;
+            if (last - s > bl) { bl = last - s; b0 = s; b1 = last; }
+          }
+        }
+        if (!best || bl > best.len) best = { x: xr, m, y0: b0, y1: b1, len: bl };
+      }
+    }
+    return best;
+  }
+
+  // Busca la tabla del remito de LAG. Devuelve { angle, x0, xSep, rows: [19 × { y0, y1 }] } en fracciones de la foto
+  // (rows[0] = PAN MIGNON BLANCO … rows[17] = PAN CIABATTA, rows[18] = el renglón vacío del final), o null.
+  // El cuerpo de la tabla tiene siempre 19 renglones iguales: se cuentan desde el borde de abajo (que es firme) y cada
+  // división se ajusta a la línea punteada más cercana. Así no importa si alguna punteada casi no se ve.
+  const BODY_ROWS = 19;
+  function findTable(g, w, h) {
+    const ots = otsu(g), thr = Math.max(90, Math.min(215, ots - 6)), thr2 = Math.max(thr, Math.min(225, ots + 50));
+    const dark = new Uint8Array(w * h);
+    for (let i = 0; i < g.length; i++) dark[i] = g[i] < thr ? 1 : 0;
+    const yc = h / 2;
+    // 1) la línea que separa CANTIDAD de DETALLE: vertical, larga (no toda la hoja) y en el tercio izquierdo
+    const sep = longestVertical(dark, w, h, w * 0.1, w * 0.45, Math.round(h * 0.15), Math.round(h * 0.97), yc);
+    if (!sep || sep.len < h * 0.2 || sep.len > h * 0.8) return null;
+    const angle = Math.atan(sep.m);
+    const xs = sep.x + sep.m * (sep.y0 + sep.y1 - 2 * yc) / 2;           // x de la separación a media altura
+    // 2) borde izquierdo de la tabla: otra vertical, con la misma inclinación, a la izquierda
+    let x0 = null;
+    for (let xr = Math.round(sep.x - w * 0.04); xr >= 2; xr--) {
+      let n = 0, tot = 0;
+      for (let y = sep.y0; y <= sep.y1; y++) {
+        const x = Math.round(xr + sep.m * (y - yc)); if (x < 1 || x >= w - 1) continue;
+        tot++; const o = y * w; if (dark[o + x] || dark[o + x - 1] || dark[o + x + 1]) n++;
+      }
+      if (tot && n / tot >= 0.7) { x0 = xr + sep.m * (sep.y0 + sep.y1 - 2 * yc) / 2; break; }
+    }
+    const xL = x0 !== null ? x0 : Math.max(0, xs - w * 0.18), xR = Math.min(w - 2, xs + (w - xs) * 0.92);
+    // 3) perfil de líneas horizontales (con la inclinación de la hoja): punteadas (umbral claro) y firmes (umbral oscuro)
+    const NB = 32;
+    let hs = -sep.m;
+    const binHit = (y, xa, xb, t) => {
+      for (let x = xa; x < xb; x++) { const yy = Math.round(y + hs * (x - xs)); for (let d = -1; d <= 1; d++) { const q = yy + d; if (q >= 0 && q < h && g[q * w + x] < t) return 1; } }
+      return 0;
+    };
+    const cover = (y, t) => {
+      let c = 0, cl = 0;
+      for (let b = 0; b < NB; b++) c += binHit(y, Math.round(xs + 3 + (xR - xs - 3) * b / NB), Math.round(xs + 3 + (xR - xs - 3) * (b + 1) / NB), t);
+      for (let b = 0; b < 6; b++) cl += binHit(y, Math.round(xL + 3 + (xs - xL - 6) * b / 6), Math.round(xL + 3 + (xs - xL - 6) * (b + 1) / 6), t);
+      return cl >= 3 ? c : 0;
+    };
+    const u0 = (sep.y1 - sep.y0) / (BODY_ROWS + 1);
+    const ya = Math.max(1, Math.round(sep.y0 - 2 * u0)), yb = Math.min(h - 2, Math.round(sep.y1 + u0));
+    // la inclinación de las horizontales se mide aparte (la hoja escaneada puede estar apenas deformada): se elige
+    // la que deja las líneas más "afiladas" en el perfil
+    {
+      let bestS = -1, bestH = hs;
+      for (let k = -10; k <= 10; k++) {
+        const cand = k * 0.002; hs = cand;
+        let sc = 0;
+        for (let y = ya; y <= yb; y += 1) {
+          let c = 0;
+          for (let b = 0; b < NB; b += 2) c += binHit(y, Math.round(xs + 3 + (xR - xs - 3) * b / NB), Math.round(xs + 3 + (xR - xs - 3) * (b + 1) / NB), thr2);
+          sc += c * c * c;
+        }
+        if (sc > bestS) { bestS = sc; bestH = cand; }
+      }
+      hs = bestH;
+    }
+    const prof = [];
+    for (let y = ya; y <= yb; y++) prof.push(cover(y, thr2));
+    const peaks = [];
+    const win = Math.max(2, Math.round(u0 * 0.35));
+    for (let i = 0; i < prof.length; i++) {
+      if (prof[i] < NB * 0.4) continue;
+      let isMax = true, lo1 = prof[i], lo2 = prof[i];
+      for (let j = Math.max(0, i - win); j <= Math.min(prof.length - 1, i + win); j++) {
+        if (prof[j] > prof[i] || (prof[j] === prof[i] && j < i)) { isMax = false; break; }
+        if (j < i) lo1 = Math.min(lo1, prof[j]); else lo2 = Math.min(lo2, prof[j]);
+      }
+      // tiene que sobresalir de lo que la rodea (el texto impreso da una meseta, no un pico)
+      if (isMax && prof[i] - Math.max(lo1, lo2) >= NB * 0.18) peaks.push(ya + i);
+    }
+    // 4) borde de abajo: la línea firme más marcada cerca del final de la separación
+    let B = sep.y1, bestC = -1;
+    for (let y = Math.round(sep.y1 - u0 * 0.6); y <= Math.round(sep.y1 + u0 * 0.6); y++) { if (y < 1 || y >= h - 1) continue; const c = cover(y, thr); if (c > bestC) { bestC = c; B = y; } }
+    // 5) alto de renglón: la periodicidad del perfil de líneas dentro del cuerpo (autocorrelación, usa todas las
+    //    punteadas a la vez, aunque algunas casi no se vean) y después el ajuste fino con los picos.
+    const segA = Math.max(ya, Math.round(B - (BODY_ROWS + 0.5) * u0)), segB = Math.min(yb, Math.round(B - 0.4 * u0));
+    const seg = []; for (let y = segA; y <= segB; y++) seg.push(prof[y - ya]);
+    const mean = seg.reduce((p, q) => p + q, 0) / Math.max(1, seg.length);
+    const z = seg.map((v) => v - mean);
+    const ac = (lag) => { let sm = 0, n = 0; for (let i = 0; i + lag < z.length; i++) { sm += z[i] * z[i + lag]; n++; } return n ? sm / n : 0; };
+    let uAc = u0, bestAc = -Infinity;
+    for (let lag = Math.floor(u0 * 0.82); lag <= Math.ceil(u0 * 1.15); lag++) {
+      const v = ac(lag) + 0.7 * ac(2 * lag) + 0.5 * ac(3 * lag);
+      if (v > bestAc) { bestAc = v; uAc = lag; }
+    }
+    { const f = (l) => ac(l) + 0.7 * ac(2 * l) + 0.5 * ac(3 * l), c = f(uAc), lft = f(uAc - 1), rgt = f(uAc + 1), den = lft - 2 * c + rgt;
+      if (den < 0) uAc += Math.max(-0.5, Math.min(0.5, 0.5 * (lft - rgt) / den)); }
+    const sig = (u) => 0.12 * u;
+    let best = { u: uAc, score: -1, lineScore: 0 };
+    for (let u = uAc * 0.97; u <= uAc * 1.03; u += uAc * 0.001) {
+      let sc = 0;
+      peaks.forEach((p) => { const k = Math.round((B - p) / u); if (k < 1 || k > BODY_ROWS) return; const d = p - (B - k * u); sc += Math.exp(-(d * d) / (2 * sig(u) * sig(u))); });
+      if (sc > best.score) best = { u, score: sc, lineScore: sc };
+    }
+    const u = best.u;
+    if (best.lineScore < 4) return null;                                     // no parece el remito de LAG
+    if (sep.y0 > B - (BODY_ROWS - 3) * u) return null;                       // la separación es demasiado corta
+    const bnd = [];
+    let snapped = 0;
+    for (let k = 0; k <= BODY_ROWS; k++) {
+      const e = B - k * u;
+      let snap = e, dmin = u * 0.25;
+      peaks.forEach((p) => { if (Math.abs(p - e) < dmin) { dmin = Math.abs(p - e); snap = p; } });
+      if (k > 0 && snap !== e) snapped++;
+      bnd.push(k === 0 ? B : snap);
+    }
+    // ¿es de verdad el remito de LAG? la mayoría de las líneas del cuerpo tienen que caer sobre la grilla de 19
+    // renglones, y casi ninguna fuera de ella (otro formulario tendría renglones de otro alto)
+    const inBody = peaks.filter((p) => p > B - BODY_ROWS * u + u * 0.3 && p < B - u * 0.3);
+    const offGrid = inBody.filter((p) => { const k = Math.round((B - p) / u); return Math.abs(p - (B - k * u)) > u * 0.22; }).length;
+    if (snapped < 9 || offGrid > Math.max(1, inBody.length * 0.25)) return null;
+    const rows = [], dy = hs * ((xL + xs) / 2 - xs);                         // las y se miden en la separación: se pasan
+    for (let i = 0; i < BODY_ROWS; i++) {                                     // al centro de la columna CANTIDAD
+      const top = bnd[BODY_ROWS - i] + dy, bot = bnd[BODY_ROWS - i - 1] + dy;
+      rows.push({ y0: (top + 2) / h, y1: (bot - 2) / h });
+    }
+    return { angle, slope: hs, thr, x0: xL / w, xSep: xs / w, rows, unit: u / h, score: best.score, lineScore: best.lineScore, snapped, offGrid, lines: bnd.map((y) => (y + dy) / h) };
+  }
+
   // Proporción de tinta dentro de un rectángulo (en píxeles), sin contar las líneas verticales.
   function inkRatio(g, w, h, r, vlines, thr) {
     const x0 = Math.max(0, Math.round(r.x0)), x1 = Math.min(w - 1, Math.round(r.x1));
@@ -166,8 +320,11 @@
     return { qty: null, desc: toks.join(" ") };
   }
 
-  const LABEL = /^\s*R\s*([0-9OoIl]{1,2})\s*[=:\-–—]?\s*(.*)$/;
-  const HEAD = /^\s*H\s*O\s*J\s*A\s*([0-9OoIl]{1,3})\b(.*)$/i;
+  // Etiquetas de la hoja de lectura: "F01 =" (fila del remito de LAG: solo la cantidad) o "R01 =" (renglón completo).
+  const LABEL = /^\s*([FRPE])\s*([0-9OoIl]{1,2})\s*[=:\-–—]?\s*(.*)$/;
+  const HEAD = /^\s*H\s*[O0]\s*J\s*A\s*([0-9OoIl]{1,3})\b(.*)$/i;
+  // En una celda de CANTIDAD: "509, 28" o "509 28" es 509,28 (el reconocedor a veces separa la coma)
+  const joinDecimals = (t) => t.replace(/(\d)\s*([.,])\s+(\d)/g, "$1$2$3").replace(/^(\D*\d{1,4})\s+(\d{2})(?!\d)/, "$1,$2");
   const num = (s) => Number(String(s).replace(/[Oo]/g, "0").replace(/[Il]/g, "1"));
 
   // Interpreta el texto copiado por el Atajo. Devuelve [{hoja, renglon, qty, qtyText, desc, oc}]
@@ -181,14 +338,15 @@
       if (h) { hoja = num(h[1]); full = /COMPLETA/i.test(h[2]); pending = null; return; }
       const m = LABEL.exec(line);
       if (m) {
-        const rest = m[2].trim(), r = { hoja, renglon: num(m[1]), raw: rest };
+        const fila = m[1].toUpperCase() !== "R";
+        const rest = (fila ? joinDecimals(m[3]) : m[3]).trim(), r = { hoja, renglon: num(m[2]), fila, raw: rest };
         Object.assign(r, splitRow(rest));
         out.push(r);
         pending = r.qty === null && !r.oc ? r : null;
         return;
       }
       if (pending) {                                   // el iPhone separó la etiqueta y el contenido en dos líneas
-        const sp = splitRow(line);
+        const sp = splitRow(pending.fila ? joinDecimals(line) : line);
         if (sp.qty !== null || sp.oc) { Object.assign(pending, sp, { desc: [pending.desc, sp.desc].filter(Boolean).join(" "), raw: (pending.raw + " " + line).trim() }); pending = null; }
         else pending.desc = [pending.desc, line].filter(Boolean).join(" ");
         return;
@@ -200,7 +358,7 @@
       }
       // texto suelto: se suma a la descripción del renglón anterior
       const prev = out[out.length - 1];
-      if (prev && prev.hoja === hoja && !/^R\s*\d/.test(line)) prev.desc = [prev.desc, line].filter(Boolean).join(" ");
+      if (prev && prev.hoja === hoja && !/^[FR]\s*\d/.test(line)) prev.desc = [prev.desc, line].filter(Boolean).join(" ");
     });
     return out.filter((r) => r.qty !== null || r.oc || r.desc);
   }
@@ -246,6 +404,6 @@
     return { name: null, score: a ? a.score : 0, alts };
   }
 
-  const api = { findRows, inkRatio, otsu, parse, splitRow, match, norm, parseNumber };
+  const api = { findTable, findRows, inkRatio, otsu, parse, splitRow, match, norm, parseNumber, FILAS_REMITO };
   if (typeof module === "object" && module.exports) module.exports = api; else root.Lectura = api;
 })(typeof self !== "undefined" ? self : this);

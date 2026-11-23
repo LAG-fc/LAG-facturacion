@@ -355,34 +355,60 @@
   }
   const pad2 = (n) => String(n).padStart(2, "0");
 
-  // Hoja de lectura: de cada remito, los renglones de la tabla con algo escrito, con etiquetas impresas.
+  // Hoja de lectura. En el remito de LAG (productos impresos en DETALLE) se toma SOLO la columna CANTIDAD de cada fila
+  // con algo escrito, con la etiqueta "Fnn =" (número de fila = producto). Si la foto no es ese remito, se usan los
+  // renglones completos ("Rnn =") o la hoja entera ("HOJA n COMPLETA").
+  async function analyzePage(foto) {
+    const bmp = await createImageBitmap(new Blob([foto.bytes], { type: "image/jpeg" }));
+    const sw = 1000, sh = Math.max(1, Math.round(bmp.height * sw / bmp.width));
+    const c = document.createElement("canvas"); c.width = sw; c.height = sh;
+    const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(bmp, 0, 0, sw, sh);
+    const d = x.getImageData(0, 0, sw, sh).data, g = new Uint8Array(sw * sh);
+    for (let p = 0, k = 0; p < g.length; p++, k += 4) g[p] = (d[k] * 77 + d[k + 1] * 150 + d[k + 2] * 29) >> 8;
+    const t = L.findTable(g, sw, sh);
+    if (t) {
+      const ink = t.rows.map((r) => { const rh = (r.y1 - r.y0) * sh; return L.inkRatio(g, sw, sh, { x0: (t.x0 + 0.02) * sw, x1: (t.xSep - 0.012) * sw, y0: r.y0 * sh + rh * 0.25, y1: r.y1 * sh - rh * 0.25 }, [], t.thr); });
+      const rows = t.rows.map((r, i) => ({ k: i + 1, r, ink: ink[i], nextInk: (ink[i + 1] || 0) >= 0.012 })).filter((r) => r.ink >= 0.012);
+      return { bmp, mode: "fila", t, rows };
+    }
+    const t2 = L.findRows(g, sw, sh);
+    if (t2) {
+      const rows = t2.rows.map((r, k) => ({ k: k + 1, r, ink: L.inkRatio(g, sw, sh, { x0: t2.x0 * sw + 3, x1: t2.x1 * sw - 3, y0: r.y0 * sh + 1, y1: r.y1 * sh - 1 }, t2.vlines, t2.thr) })).filter((r) => r.ink > 0.0035);
+      if (rows.length) return { bmp, mode: "renglon", t: t2, rows };
+    }
+    return { bmp, mode: "completa", t: null, rows: [] };
+  }
   async function buildSheet(fotos) {
     const pages = [];
-    for (let i = 0; i < fotos.length; i++) {
-      const bmp = await createImageBitmap(new Blob([fotos[i].bytes], { type: "image/jpeg" }));
-      const sw = 1000, sh = Math.max(1, Math.round(bmp.height * sw / bmp.width));
-      const c = document.createElement("canvas"); c.width = sw; c.height = sh;
-      const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(bmp, 0, 0, sw, sh);
-      const d = x.getImageData(0, 0, sw, sh).data, g = new Uint8Array(sw * sh);
-      for (let p = 0, k = 0; p < g.length; p++, k += 4) g[p] = (d[k] * 77 + d[k + 1] * 150 + d[k + 2] * 29) >> 8;
-      const t = L.findRows(g, sw, sh);
-      let rows = [];
-      if (t) rows = t.rows.map((r, k) => ({ k: k + 1, r, ink: L.inkRatio(g, sw, sh, { x0: t.x0 * sw + 3, x1: t.x1 * sw - 3, y0: r.y0 * sh + 1, y1: r.y1 * sh - 1 }, t.vlines, t.thr) })).filter((r) => r.ink > 0.0035);
-      pages.push({ bmp, t: rows.length ? t : null, rows });
-      await new Promise((r) => setTimeout(r, 0));
-    }
-    const W = 1800, LBL = 205, CW = W - LBL - 24, GAP = 26, HEAD = 96, FULLW = W - 60;
+    for (let i = 0; i < fotos.length; i++) { pages.push(await analyzePage(fotos[i])); await new Promise((r) => setTimeout(r, 0)); }
+    // tamaño de cada recorte
+    const LBL = 205, GAP = 24, HEAD = 96;
+    pages.forEach((pg) => {
+      const bw = pg.bmp.width, bh = pg.bmp.height;
+      pg.rows.forEach((r) => {
+        const rh = (r.r.y1 - r.r.y0) * bh;
+        if (pg.mode === "fila") {
+          // se escribe "sentado" sobre la línea de abajo: se deja más margen abajo (salvo que la fila siguiente tenga algo)
+          r.sx = (pg.t.x0 + 0.008) * bw; r.sw = (pg.t.xSep - 0.006 - pg.t.x0 - 0.008) * bw;
+          r.sy = r.r.y0 * bh - rh * 0.22; r.sh = rh * (1.22 + (r.nextInk ? 0.12 : 0.38));
+          r.s = Math.min(2, 118 / r.sh);
+        } else {
+          r.sx = pg.t.x0 * bw; r.sw = (pg.t.x1 - pg.t.x0) * bw; r.sy = r.r.y0 * bh; r.sh = rh;
+          r.s = Math.min(1.3, 1550 / r.sw);
+        }
+        r.sy = Math.max(0, r.sy); r.sh = Math.min(bh - r.sy, r.sh);
+      });
+    });
+    const maxW = Math.max(0, ...pages.map((pg) => Math.max(0, ...pg.rows.map((r) => r.sw * r.s))));
+    const W = Math.max(760, Math.ceil(LBL + maxW + 40)), FULLW = Math.min(1700, W - 60);
     let scale = 1;
     const layout = () => {
       let y = 20;
       pages.forEach((pg) => {
         pg.y = y; y += HEAD;
-        if (pg.t) pg.rows.forEach((r) => {
-          const cw = (pg.t.x1 - pg.t.x0) * pg.bmp.width, ch = (r.r.y1 - r.r.y0) * pg.bmp.height;
-          r.s = Math.min(1.3, CW / cw) * scale; r.h = Math.max(36, ch * r.s); r.y = y; y += r.h + GAP;
-        });
+        if (pg.rows.length) pg.rows.forEach((r) => { r.dw = r.sw * r.s * scale; r.h = Math.max(36, r.sh * r.s * scale); r.y = y; y += r.h + GAP; });
         else { pg.fs = (FULLW / pg.bmp.width) * scale; y += pg.bmp.height * pg.fs + GAP; }
-        y += 20;
+        y += 16;
       });
       return y;
     };
@@ -393,25 +419,31 @@
     x.fillStyle = "#fff"; x.fillRect(0, 0, W, cv.height);
     x.fillStyle = "#000"; x.textBaseline = "middle";
     pages.forEach((pg, i) => {
-      x.font = "bold 54px Helvetica, Arial, sans-serif";
-      x.fillText("HOJA " + (i + 1) + (pg.t ? "" : " COMPLETA"), 24, pg.y + HEAD / 2 - 8);
+      x.font = "bold 54px Helvetica, Arial, sans-serif"; x.textAlign = "left";
+      x.fillText("HOJA " + (i + 1) + (pg.rows.length ? "" : " COMPLETA"), 24, pg.y + HEAD / 2 - 8);
       x.fillRect(24, pg.y + HEAD - 18, W - 48, 3);
-      if (pg.t) {
-        const bw = pg.bmp.width, bh = pg.bmp.height, sx = pg.t.x0 * bw;
+      if (pg.rows.length) {
         pg.rows.forEach((r) => {
-          const sy = r.r.y0 * bh, sW = (pg.t.x1 - pg.t.x0) * bw, sH = (r.r.y1 - r.r.y0) * bh, dw = sW * r.s;
-          x.font = "bold 50px Helvetica, Arial, sans-serif"; x.textAlign = "right";   // etiqueta pegada al renglón
-          x.fillText("R" + pad2(r.k) + " =", LBL - 10, r.y + r.h / 2); x.textAlign = "left";
-          x.drawImage(pg.bmp, sx, sy, sW, sH, LBL, r.y, dw, r.h);
-          x.fillStyle = "#fff";                                   // se tapan las líneas verticales de la tabla
-          pg.t.vlines.forEach((v) => { const a = LBL + (v.x0 * bw - sx) * r.s - 3, b = LBL + (v.x1 * bw - sx) * r.s + 3; if (b > LBL && a < LBL + dw) x.fillRect(Math.max(LBL, a), r.y, b - Math.max(LBL, a), r.h); });
-          x.fillStyle = "#000";
+          x.font = "bold 50px Helvetica, Arial, sans-serif"; x.textAlign = "right";   // etiqueta pegada al recorte
+          x.fillText((pg.mode === "fila" ? "F" : "R") + pad2(r.k) + " =", LBL - 10, r.y + r.h / 2); x.textAlign = "left";
+          x.drawImage(pg.bmp, r.sx, r.sy, r.sw, r.sh, LBL, r.y, r.dw, r.h);
+          if (pg.mode === "renglon") {                            // se tapan las líneas verticales de la tabla
+            x.fillStyle = "#fff";
+            const bw = pg.bmp.width, k = r.dw / r.sw;
+            pg.t.vlines.forEach((v) => { const a = LBL + (v.x0 * bw - r.sx) * k - 3, b = LBL + (v.x1 * bw - r.sx) * k + 3; if (b > LBL && a < LBL + r.dw) x.fillRect(Math.max(LBL, a), r.y, b - Math.max(LBL, a), r.h); });
+            x.fillStyle = "#000";
+          }
         });
       } else x.drawImage(pg.bmp, 30, pg.y + HEAD, pg.bmp.width * pg.fs, pg.bmp.height * pg.fs);
       if (pg.bmp.close) pg.bmp.close();
     });
-    const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.9));
-    return { file: new File([blob], "lag-cantidades.jpg", { type: "image/jpeg" }), rows: pages.reduce((s, p) => s + (p.t ? p.rows.length : 0), 0), full: pages.filter((p) => !p.t).length };
+    const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.92));
+    return {
+      file: new File([blob], "lag-cantidades.jpg", { type: "image/jpeg" }),
+      pages: pages.map((pg) => ({ mode: pg.mode, rows: pg.rows.map((r) => r.k) })),
+      rows: pages.reduce((s, p) => s + p.rows.length, 0), full: pages.filter((p) => !p.rows.length).length,
+      empty: pages.filter((p) => p.mode === "fila" && !p.rows.length).length
+    };
   }
   async function prepareSheet(it, fotos) {
     if (!LEC_OK || !fotos || !fotos.length) return null;
@@ -461,7 +493,15 @@
     }
     lecText.hidden = true; lecWaiting = false;
     const cat = A.catalog(), aliases = loadAliases();
+    const pageMode = (hoja) => { const pg = sheet && sheetId === cur.id && sheet.pages ? sheet.pages[hoja - 1] : null; return pg ? pg.mode : null; };
     const filas = read.map((r) => {
+      const md = pageMode(r.hoja);
+      if (r.renglon && (md ? md === "fila" : r.fila)) {
+        // remito de LAG: el número de fila dice el producto (impreso en DETALLE)
+        const impreso = L.FILAS_REMITO[r.renglon - 1];
+        const name = impreso ? (cat.includes(impreso) ? impreso : (L.match(impreso, cat, {}).name || impreso)) : "";
+        return { h: r.hoja, r: r.renglon, q: r.qtyText, d: impreso ? "Fila " + r.renglon : "Fila " + r.renglon + " (sin producto impreso)", p: name, alts: [] };
+      }
       const m = L.match(r.desc, cat, aliases);
       return { h: r.hoja, r: r.renglon, q: r.qtyText, d: r.desc, p: m.name || (r.qty > 5000 ? "__no" : ""), alts: m.alts };
     });
@@ -494,7 +534,7 @@
       le.filas.forEach((f) => {
         const row = document.createElement("div");
         row.className = "lec-row" + (!f.p ? " warn" : f.p === "__no" ? " off" : "");
-        const pos = document.createElement("span"); pos.className = "lec-pos"; pos.textContent = "H" + f.h + (f.r ? "·R" + f.r : "");
+        const pos = document.createElement("span"); pos.className = "lec-pos"; pos.textContent = "H" + f.h + (f.r ? "·F" + f.r : "");
         const q = document.createElement("input"); q.type = "text"; q.inputMode = "decimal"; q.className = "lec-q"; q.value = f.q;
         q.addEventListener("input", () => { f.q = q.value; q.classList.toggle("bad", parseQty(q.value).ok === false); fillHead(); });
         const sel = document.createElement("select"); sel.className = "lec-p";
@@ -519,7 +559,7 @@
     $("lecDet").hidden = !le;
     $("lecApply").lastChild.textContent = le && le.aplicados.length ? "Volver a pasar a la tabla" : "Pasar a la tabla";
     // mensajes de estado (cuando ya hay una lectura, los escriben handleText / applyReading)
-    if (!le && LEC_OK) lecMsg.textContent = lecWaiting ? "Listo. Ahora tocá «Pegar lectura» y después «Pegar»." : (sheet ? (sheet.rows ? "Se van a leer " + sheet.rows + (sheet.rows === 1 ? " renglón" : " renglones") + (sheet.full ? " y " + sheet.full + " hoja(s) completa(s)" : "") + "." : "No encontré la tabla en las fotos: se van a leer las hojas completas.") : "");
+    if (!le && LEC_OK) lecMsg.textContent = lecWaiting ? "Listo. Ahora tocá «Pegar lectura» y después «Pegar»." : (sheet ? (sheet.rows ? "Se van a leer " + sheet.rows + (sheet.rows === 1 ? " cantidad" : " cantidades") + " de la columna CANTIDAD" + (sheet.full ? " y " + sheet.full + " hoja(s) completa(s) (no encontré la tabla)" : "") + "." : "No encontré la tabla en las fotos: se van a leer las hojas completas.") : "");
   }
   function renderLecSummaryOnly() {
     const le = work && work.leido; if (!le) return;
@@ -534,7 +574,7 @@
     for (const f of le.filas) {
       if (!f.p || f.p === "__no") continue;
       const q = parseQty(f.q);
-      if (!q.ok) { lecMsg.textContent = "Revisá la cantidad «" + f.q + "» (H" + f.h + (f.r ? "·R" + f.r : "") + ")."; return; }
+      if (!q.ok) { lecMsg.textContent = "Revisá la cantidad «" + f.q + "» (H" + f.h + (f.r ? "·F" + f.r : "") + ")."; return; }
       (sums[f.p] = sums[f.p] || []).push(formatQty(q.value));
     }
     const names = Object.keys(sums);
