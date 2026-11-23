@@ -1,5 +1,23 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.5
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.6
 =======================================================
+
+NOVEDADES v8.6 · FOTOS SACADAS CON EL CELULAR (hoja arrugada, torcida o en perspectiva)
+- Problema: con una foto sacada con el celular (remito de Cook Master, hoja arrugada y sostenida con la mano) la
+  página no encontraba la tabla y le mandaba al Atajo los renglones completos ("R01 =", con la columna DETALLE): el
+  iPhone leía las etiquetas por un lado y el texto por otro y las cantidades quedaban mal asignadas.
+- Ahora la tabla se encuentra aunque la foto esté torcida (hasta unos 4°), en perspectiva (los renglones de arriba se
+  ven más chicos) o con la hoja curvada cerca del borde. Cada fila de la columna CANTIDAD se recorta enderezada.
+- Los agujeros de la carpeta que asoman en la columna CANTIDAD ya no cuentan como "algo escrito".
+- Si el iPhone lee primero todas las etiquetas y después todos los números ("F01 =", "F15 =", "5,28", "22"), se
+  asignan en orden. Si el iPhone no leyó alguna fila, lo leído NO se pasa solo a la tabla: queda marcado en amarillo
+  con "revisá la fila con la foto" hasta que lo revises y toques «Pasar a la tabla».
+- En la lista de lo leído, "H1·F15" = hoja 1, fila 15 del remito (PREPIZZA). "R" = renglón de otro tipo de tabla.
+- Probado con: la foto de Cook Master (5,28 → PAN MIGNON BLANCO y 22 → PREPIZZA), las 15 fotos de CamScanner y esas
+  mismas 15 deformadas a propósito (giradas, en perspectiva y curvadas: 75 fotos). En todas encontró la tabla.
+- La ayuda "¿Cómo se configura?" suma un consejo para sacar la foto.
+- El Atajo «LAG Cantidades» NO cambia. No hace falta volver a publicar las reglas de Firestore.
+- CAMBIARON: lectura.js, lotes.js, index.html, scanner.js, sw.js.
+
 
 NOVEDADES v8.5 · EL ATAJO LEE SOLO LAS CANTIDADES Y EL NÚMERO DE FILA
 - La página reconoce el formulario del remito de LAG (columna CANTIDAD + los 18 productos impresos en DETALLE).

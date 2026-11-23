@@ -354,6 +354,8 @@
     try { localStorage.setItem(ALIAS_KEY, JSON.stringify(a)); } catch (e) { /* nada */ }
   }
   const pad2 = (n) => String(n).padStart(2, "0");
+  // "H1·F15": hoja 1, fila 15 del remito de LAG ("R": renglón de otra tabla)
+  const posLabel = (f) => "H" + f.h + (f.r ? "·" + (f.t || "F") + f.r : "");
 
   // Hoja de lectura. En el remito de LAG (productos impresos en DETALLE) se toma SOLO la columna CANTIDAD de cada fila
   // con algo escrito, con la etiqueta "Fnn =" (número de fila = producto). Si la foto no es ese remito, se usan los
@@ -367,7 +369,8 @@
     for (let p = 0, k = 0; p < g.length; p++, k += 4) g[p] = (d[k] * 77 + d[k + 1] * 150 + d[k + 2] * 29) >> 8;
     const t = L.findTable(g, sw, sh);
     if (t) {
-      const ink = t.rows.map((r) => { const rh = (r.y1 - r.y0) * sh; return L.inkRatio(g, sw, sh, { x0: (t.x0 + 0.02) * sw, x1: (t.xSep - 0.012) * sw, y0: r.y0 * sh + rh * 0.25, y1: r.y1 * sh - rh * 0.25 }, [], t.thr); });
+      // tinta en la franja del medio de cada celda; el quinto izquierdo no cuenta (ahí asoman los agujeros de la carpeta)
+      const ink = t.rows.map((r) => L.cellInk(g, sw, sh, r.cell, t.thr, { u0: 0.2, u1: 0.95, v0: 0.25, v1: 0.75 }));
       const rows = t.rows.map((r, i) => ({ k: i + 1, r, ink: ink[i], nextInk: (ink[i + 1] || 0) >= 0.012 })).filter((r) => r.ink >= 0.012);
       return { bmp, mode: "fila", t, rows };
     }
@@ -388,10 +391,15 @@
       pg.rows.forEach((r) => {
         const rh = (r.r.y1 - r.r.y0) * bh;
         if (pg.mode === "fila") {
-          // se escribe "sentado" sobre la línea de abajo: se deja más margen abajo (salvo que la fila siguiente tenga algo)
-          r.sx = (pg.t.x0 + 0.008) * bw; r.sw = (pg.t.xSep - 0.006 - pg.t.x0 - 0.008) * bw;
-          r.sy = r.r.y0 * bh - rh * 0.22; r.sh = rh * (1.22 + (r.nextInk ? 0.12 : 0.38));
+          // la celda de CANTIDAD, enderezada (la foto puede estar torcida o la hoja curvada). Se escribe "sentado"
+          // sobre la línea de abajo: se deja más margen abajo (salvo que la fila siguiente tenga algo)
+          const c = r.r.cell, k = bw / pg.t.size.w, ML = 6, MR = 5;
+          const vTop = -0.72 * c.ht, vBot = (0.5 + (r.nextInk ? 0.12 : 0.38)) * c.ht;
+          const lu = (ML - MR) / 2, lv = (vTop + vBot) / 2, ca = Math.cos(c.ang), sa = Math.sin(c.ang);
+          r.rot = { ang: c.ang, cx: (c.cx + lu * ca - lv * sa) * k, cy: (c.cy + lu * sa + lv * ca) * k };
+          r.sw = (c.wd - ML - MR) * k; r.sh = (vBot - vTop) * k;
           r.s = Math.min(2, 118 / r.sh);
+          return;
         } else {
           r.sx = pg.t.x0 * bw; r.sw = (pg.t.x1 - pg.t.x0) * bw; r.sy = r.r.y0 * bh; r.sh = rh;
           r.s = Math.min(1.3, 1550 / r.sw);
@@ -426,7 +434,11 @@
         pg.rows.forEach((r) => {
           x.font = "bold 50px Helvetica, Arial, sans-serif"; x.textAlign = "right";   // etiqueta pegada al recorte
           x.fillText((pg.mode === "fila" ? "F" : "R") + pad2(r.k) + " =", LBL - 10, r.y + r.h / 2); x.textAlign = "left";
-          x.drawImage(pg.bmp, r.sx, r.sy, r.sw, r.sh, LBL, r.y, r.dw, r.h);
+          if (r.rot) {                                            // recorte girado: la fila queda derecha
+            x.save(); x.beginPath(); x.rect(LBL, r.y, r.dw, r.h); x.clip();
+            x.translate(LBL + r.dw / 2, r.y + r.h / 2); x.scale(r.dw / r.sw, r.h / r.sh); x.rotate(-r.rot.ang);
+            x.drawImage(pg.bmp, -r.rot.cx, -r.rot.cy); x.restore();
+          } else x.drawImage(pg.bmp, r.sx, r.sy, r.sw, r.sh, LBL, r.y, r.dw, r.h);
           if (pg.mode === "renglon") {                            // se tapan las líneas verticales de la tabla
             x.fillStyle = "#fff";
             const bw = pg.bmp.width, k = r.dw / r.sw;
@@ -500,19 +512,23 @@
         // remito de LAG: el número de fila dice el producto (impreso en DETALLE)
         const impreso = L.FILAS_REMITO[r.renglon - 1];
         const name = impreso ? (cat.includes(impreso) ? impreso : (L.match(impreso, cat, {}).name || impreso)) : "";
-        return { h: r.hoja, r: r.renglon, q: r.qtyText, d: impreso ? "Fila " + r.renglon : "Fila " + r.renglon + " (sin producto impreso)", p: name, alts: [] };
+        const f = { h: r.hoja, r: r.renglon, t: "F", q: r.qtyText, d: (impreso ? "Fila " + r.renglon : "Fila " + r.renglon + " (sin producto impreso)") + (r.dudoso ? " · revisá la fila con la foto" : ""), p: name, alts: [] };
+        if (r.dudoso) f.dudoso = true;
+        return f;
       }
       const m = L.match(r.desc, cat, aliases);
-      return { h: r.hoja, r: r.renglon, q: r.qtyText, d: r.desc, p: m.name || (r.qty > 5000 ? "__no" : ""), alts: m.alts };
+      return { h: r.hoja, r: r.renglon, t: "R", q: r.qtyText, d: r.desc, p: m.name || (r.qty > 5000 ? "__no" : ""), alts: m.alts };
     });
     work.leido = { fecha: Date.now(), filas, aplicados: [] };
     $("lecDet").open = true;
     renderLecBox(); fillHead();
     try { lecBox.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) { /* nada */ }
-    const pending = filas.filter((f) => !f.p).length;
+    const pending = filas.filter((f) => !f.p).length, dudosos = filas.filter((f) => f.dudoso).length;
     const clash = filas.some((f) => f.p && f.p !== "__no" && String(work.values[f.p] || "").trim());
-    if (!pending && !clash) await applyReading(true);
-    else lecMsg.textContent = pending ? "Elegí el producto de los renglones marcados y tocá «Pasar a la tabla»." : "La tabla ya tenía cantidades: revisá y tocá «Pasar a la tabla» para reemplazarlas.";
+    if (!pending && !dudosos && !clash) await applyReading(true);
+    else lecMsg.textContent = pending ? "Elegí el producto de los renglones marcados y tocá «Pasar a la tabla»." :
+      dudosos ? "El iPhone no leyó todas las filas: revisá con la foto las marcadas y tocá «Pasar a la tabla»." :
+      "La tabla ya tenía cantidades: revisá y tocá «Pasar a la tabla» para reemplazarlas.";
   }
 
   function renderLecBox() {
@@ -533,10 +549,14 @@
         (sin ? " · " + sin + " sin producto" : "") + (le.aplicados.length ? " · ✓ en la tabla" : "");
       le.filas.forEach((f) => {
         const row = document.createElement("div");
-        row.className = "lec-row" + (!f.p ? " warn" : f.p === "__no" ? " off" : "");
-        const pos = document.createElement("span"); pos.className = "lec-pos"; pos.textContent = "H" + f.h + (f.r ? "·F" + f.r : "");
+        row.className = "lec-row" + (!f.p || f.dudoso ? " warn" : f.p === "__no" ? " off" : "");
+        const pos = document.createElement("span"); pos.className = "lec-pos"; pos.textContent = posLabel(f);
         const q = document.createElement("input"); q.type = "text"; q.inputMode = "decimal"; q.className = "lec-q"; q.value = f.q;
-        q.addEventListener("input", () => { f.q = q.value; q.classList.toggle("bad", parseQty(q.value).ok === false); fillHead(); });
+        q.addEventListener("input", () => {
+          f.q = q.value; q.classList.toggle("bad", parseQty(q.value).ok === false);
+          if (f.dudoso) { delete f.dudoso; row.className = "lec-row" + (!f.p ? " warn" : f.p === "__no" ? " off" : ""); }
+          fillHead();
+        });
         const sel = document.createElement("select"); sel.className = "lec-p";
         const opts = ['<option value="">— elegí el producto —</option>'];
         const alts = (f.alts || []).filter((n) => cat.includes(n));
@@ -547,7 +567,8 @@
         if (f.p && f.p !== "__no" && !cat.includes(f.p)) { const o = document.createElement("option"); o.value = f.p; o.textContent = f.p; sel.insertBefore(o, sel.options[1]); }
         sel.value = f.p || "";
         sel.addEventListener("change", () => {
-          f.p = sel.value; if (f.p && f.d) saveAlias(f.d, f.p);
+          f.p = sel.value; if (f.p && f.d && f.t !== "F") saveAlias(f.d, f.p);
+          delete f.dudoso;
           row.className = "lec-row" + (!f.p ? " warn" : f.p === "__no" ? " off" : "");
           renderLecSummaryOnly(); fillHead();
         });
@@ -574,7 +595,7 @@
     for (const f of le.filas) {
       if (!f.p || f.p === "__no") continue;
       const q = parseQty(f.q);
-      if (!q.ok) { lecMsg.textContent = "Revisá la cantidad «" + f.q + "» (H" + f.h + (f.r ? "·F" + f.r : "") + ")."; return; }
+      if (!q.ok) { lecMsg.textContent = "Revisá la cantidad «" + f.q + "» (" + posLabel(f) + ")."; return; }
       (sums[f.p] = sums[f.p] || []).push(formatQty(q.value));
     }
     const names = Object.keys(sums);
@@ -587,6 +608,7 @@
       if (clash.length) parts.push("Se reemplazan las cantidades que ya estaban cargadas en: " + clash.join(", ") + ".");
       if (parts.length && !(await A.askConfirm(parts.join("\n\n") + "\n\n¿Pasar la lectura a la tabla?", "Pasar a la tabla", "Volver"))) return;
     }
+    le.filas.forEach((f) => { delete f.dudoso; });                                             // ya las revisó
     le.aplicados.forEach((n) => { if (!sums[n] && cat.includes(n)) work.values[n] = ""; });   // lectura anterior
     work.extras = work.extras.filter((x) => !le.aplicados.includes(x.nombre) || sums[x.nombre]);
     names.forEach((n) => {

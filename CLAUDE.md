@@ -90,22 +90,23 @@ The automatic handwriting reader (v8.0–8.2: `lector.js`, `digits-core.js`, `di
 Web pages can't call iOS Live Text, so an iOS Shortcut named **"LAG Cantidades"** acts as the bridge. The owner builds it once by hand; the steps are in the in-app help dialog `#lecHelpDialog`. It takes Share Sheet images, runs "Extract Text from Image" and copies the result to the clipboard.
 
 1. In the lote dialog, `lotes.js` builds a "hoja de lectura" (`analyzePage`/`buildSheet`). The page is decoded and downscaled to a 1000 px-wide grayscale image, then analyzed:
-   - **LAG remito form (v8.5, mode `fila`).** It has a CANTIDAD column and a DETALLE column with the 18 products pre-printed in `Lectura.FILAS_REMITO` order, followed by one blank row: 19 body rows in total. `Lectura.findTable` handles this case:
-     1. It finds the long vertical CANTIDAD/DETALLE separator (tilt-tolerant search).
-     2. It measures the horizontal-line tilt separately from the vertical one, because CamScanner pages are slightly sheared.
-     3. It finds the dotted row lines as coverage peaks, using a lighter threshold than for text.
-     4. It anchors on the solid table bottom and estimates the row height from the autocorrelation of the line profile.
-     5. It snaps the 19-row grid to the peaks.
-     6. It rejects other forms when fewer than 9 boundaries snap or too many lines fall off-grid.
+   - **LAG remito form (v8.5, mode `fila`; v8.6 handles phone photos).** It has a CANTIDAD column and a DETALLE column with the 18 products pre-printed in `Lectura.FILAS_REMITO` order, followed by one blank row: 19 body rows in total. `Lectura.findTable` handles this case. It is built for hand-held phone photos: tilted up to about 4°, in perspective, and wrinkled so that row lines curve near the paper edge.
+     1. It finds the CANTIDAD/DETALLE separator among the long vertical lines (`verticalLines`), searching tilts up to ±0.07. The score is a dense-segment (Kadane) run, so glare gaps are bridged but chains of letters are not. The chosen line is the first candidate that has the table's left border (`leftBorder`, which has its own tilt) to its left; this avoids picking the page edge.
+     2. It builds the horizontal-line profile only in a DETALLE band next to the separator, with its own tilt search. Peaks must continue across CANTIDAD (`leftTrace`).
+     3. It anchors on the solid table bottom and estimates the row height from the autocorrelation of the profile. Perspective is fitted as line k = B − u·k − c·k².
+     4. It snaps the 19-row grid to the peaks. It rejects other forms unless at least 13 boundaries snap, few lines fall off-grid, and the separator length is 0.85–1.25 × the grid height (this catches half-row grids on other tables).
+     5. Each boundary is traced inside CANTIDAD with its own slope. Each row gets a tilted `cell` `{cx, cy, wd, ht, ang}` in analysis-image pixels (`t.size`).
 
-     Only CANTIDAD cells that have ink in the middle band are cropped. People write sitting on the lower line, so the crop gets extra bottom padding. Each crop is labelled `Fnn =`, and row k maps to product k.
+     `Lectura.cellInk` measures ink in the cell's middle band, skipping the left fifth where binder holes show. Only cells with ink are cropped. `lotes.js` draws each crop rotated, so the row comes out straight. People write sitting on the lower line, so the crop gets extra bottom padding. Each crop is labelled `Fnn =`, and row k maps to product k.
    - **Any other table (mode `renglon`).** `Lectura.findRows` produces full-width rows labelled `Rnn =`, and the product is matched by description.
    - **No table found.** The whole page is added as `HOJA n COMPLETA`.
 
-   Tested against 15 real remito photos; they are not in the repo, so ask the owner for samples if needed.
+   It has been tested against 15 real CamScanner remito photos, 75 deformed variants of them (rotated, perspective, curved), and one hand-held phone photo. None of these are in the repo; ask the owner for samples if needed.
 2. It shares that image via `navigator.share({ files })` with only files, so the Shortcut receives a pure image input.
 3. "Pegar lectura" calls `navigator.clipboard.readText()`, with a textarea fallback.
 4. `Lectura.parse` handles labels split across lines, fixes confusable characters (`l2O` → 120) and skips "OC ####" notes.
+   - Live Text may output every label first and every number after (`F01 =`, `F15 =`, `5,28`, `22`). On `fila` pages, loose numbers fill the empty labels in order.
+   - If empty labels remain at the end of the page, the readings assigned by order are flagged `dudoso`. Flagged readings are not auto-applied and are highlighted until the user edits them or applies them manually.
 5. `Lectura.match` fuzzy-matches each description to the catalog. Learned aliases are stored in localStorage `lecturaAlias`.
 6. The sums go into the table as `a+b`. The reading is saved in `tabla.leido = { fecha, filas: [{h, r, q, d, p}], aplicados }`, so no rules change was needed. Applied inputs get the `.leido` highlight.
 
