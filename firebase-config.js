@@ -9,10 +9,10 @@
 //
 // Mientras queden vacíos, la página muestra un aviso y permite seguir usándola sin iniciar sesión.
 window.LAG_FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyCTB5Eg5NcVf2H3wflIeTMc9kVdAMdgETY",
+  authDomain: "lag-panificados.firebaseapp.com",
+  projectId: "lag-panificados",
+  storageBucket: "lag-panificados.firebasestorage.app",
+  messagingSenderId: "491535189470",
+  appId: "1:491535189470:web:84359817baddbc0011094f"
 };
