@@ -155,7 +155,9 @@
     const det = Crop.detectPaper(pctx.getImageData(0, 0, probe.width, probe.height));
     if (!det) return null;
     const kx = sw / probe.width, ky = sh / probe.height;
-    return det.quad.map((p) => ({ x: p.x * kx, y: p.y * ky }));
+    const quad = det.quad.map((p) => ({ x: p.x * kx, y: p.y * ky }));
+    quad.relaxed = !!det.relaxed;               // hoja blanca sobre mesa clara (segundo intento de crop.js)
+    return quad;
   }
 
   // ---------- Recuadro en vivo de la hoja ----------
@@ -305,7 +307,7 @@
     let work, cropped = false;
     if (autoCrop) {
       const quad = detectQuad(full, full.width, full.height);
-      if (quad) { work = canvasFromImageData(Crop.process(imageDataOf(full), quad, MAX_SIDE).img); cropped = true; }
+      if (quad) { work = canvasFromImageData(Crop.process(imageDataOf(full), quad, MAX_SIDE, { relaxed: quad.relaxed }).img); cropped = true; }
       else work = fitCanvas(full, MAX_SIDE);
     } else work = fitCanvas(full, MAX_SIDE);
     await sleep(0);

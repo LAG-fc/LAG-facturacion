@@ -98,7 +98,7 @@
   const COS = new Float32Array(NTH), SIN = new Float32Array(NTH);
   for (let t = 0; t < NTH; t++) { COS[t] = Math.cos(t * Math.PI / 180); SIN[t] = Math.sin(t * Math.PI / 180); }
 
-  function houghLines(E, w, h) {
+  function houghLines(E, w, h, gs) {
     const D = Math.ceil(Math.hypot(w, h)), NR = 2 * D + 1;
     const acc = new Uint16Array(NTH * NR);
     const SPREAD = 3;
@@ -126,7 +126,7 @@
       }
       if (near) continue;
       peaks.push({ t, r, votes: acc[i] });
-      if (peaks.length >= 30) break;
+      if (peaks.length >= 120) break;
     }
     // Ajuste fino de cada recta con los píxeles de borde que la forman (mínimos cuadrados totales).
     const lines = [];
@@ -151,15 +151,34 @@
       if (nx * c + ny * s < 0) { nx = -nx; ny = -ny; }
       lines.push({ nx, ny, rho: nx * mx + ny * my, votes: n, border: false });
     }
-    // sin repetidas
+    // sin repetidas, y sin las rayas impresas: una raya oscura fina tiene dos bordes opuestos pegados (claro arriba
+    // y claro abajo); el borde de la hoja es un solo escalón. Así las líneas del formulario no tapan al borde de la hoja.
     lines.sort((a, b) => b.votes - a.votes);
-    const out = [];
+    const all = [];
     for (const l of lines) {
-      if (out.some((o) => o.nx * l.nx + o.ny * l.ny > 0.9994 && Math.abs(o.rho - l.rho) < 3)) continue;
-      out.push(l);
-      if (out.length >= 24) break;
+      if (all.some((o) => o.nx * l.nx + o.ny * l.ny > 0.9994 && Math.abs(o.rho - l.rho) < 3)) continue;
+      all.push(l);
     }
-    return out;
+    // brillo típico del lado claro de una recta (mediana de muestras a 3 px, a lo ancho de la foto)
+    const brightSide = (l) => {
+      const v = [];
+      for (let i = 1; i < 16; i++) {
+        let x, y;
+        if (Math.abs(l.ny) >= Math.abs(l.nx)) { x = (w - 1) * i / 16; y = (l.rho - l.nx * x) / l.ny; }
+        else { y = (h - 1) * i / 16; x = (l.rho - l.ny * y) / l.nx; }
+        const xi = Math.round(x + 3 * l.nx), yi = Math.round(y + 3 * l.ny);
+        if (xi >= 0 && yi >= 0 && xi < w && yi < h) v.push(gs[yi * w + xi]);
+      }
+      v.sort((a, b) => a - b);
+      return v.length ? v[v.length >> 1] : -1;
+    };
+    // raya impresa: dos bordes opuestos pegados y el MISMO papel de los dos lados (el borde de la hoja con su sombrita
+    // tiene papel de un lado y mesa del otro)
+    for (const l of all) {
+      l.thin = all.some((o) => o !== l && o.nx * l.nx + o.ny * l.ny < -0.995 && Math.abs(o.rho + l.rho) < 4.5 &&
+        Math.abs(brightSide(o) - brightSide(l)) < 12);
+    }
+    return { strict: all.filter((l) => !l.thin).slice(0, 24), all: all.slice(0, 80) };
   }
 
   function intersect(a, b) {
@@ -204,6 +223,43 @@
     if (Math.min(s[1], s[3]) / Math.max(s[1], s[3]) < 0.55) return 0;
     if (Math.min(...s) < 0.15 * Math.min(w, h)) return 0;
     return pen;
+  }
+  // Forma de hoja + la hoja en 3D tiene esquinas de 90° (±8°; una hoja real fotografiada da a lo sumo ~7° aun
+  // con el celular muy inclinado). iw, ih: tamaño de la foto (centro óptico).
+  function sheetShape(q, w, h, iw, ih) {
+    const pen = rectShape(q, w, h);
+    if (!pen) return 0;
+    const s3 = sheet3D(q, iw || w, ih || h);
+    if (!s3) return 0;
+    const dev = Math.abs(s3.ang - 90);
+    if (dev > 8) return 0;
+    // proporción de hoja real (de oficio a apaisado): una franja larga (un renglón, el encabezado) no es una hoja
+    const ar = Math.sqrt(s3.A(s3.n2, s3.n2) / s3.A(s3.n3, s3.n3));
+    if (!(Math.min(ar, 1 / ar) >= 0.55)) return 0;
+    return pen * (1 - 0.5 * (dev / 8) * (dev / 8));
+  }
+
+  // La hoja "reconstruida" en 3D (método de Zhang y He, con la distancia focal típica de un celular y el centro de
+  // la foto como centro óptico): 4 puntos de la foto siempre son la vista de un paralelogramo; acá se calcula ese
+  // paralelogramo y su ángulo real. Una hoja de verdad da 90°; un recuadro que sigue un pliegue, otra hoja o el
+  // borde de la foto en diagonal da un ángulo lejos de 90°. Devuelve {ang (grados), n2, n3} o null (imposible).
+  const v3 = {
+    cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+    dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  };
+  function sheet3D(q, w, h) {
+    const f = 0.75 * Math.max(w, h), u0 = w / 2, v0 = h / 2;
+    const m = (p) => [p.x - u0, p.y - v0, 1];
+    const m1 = m(q[0]), m2 = m(q[1]), m4 = m(q[2]), m3 = m(q[3]);
+    const c14 = v3.cross(m1, m4);
+    const k2 = v3.dot(c14, m3) / v3.dot(v3.cross(m2, m4), m3), k3 = v3.dot(c14, m2) / v3.dot(v3.cross(m3, m4), m2);
+    if (!isFinite(k2) || !isFinite(k3) || k2 <= 0 || k3 <= 0) return null;     // no puede ser una hoja delante de la cámara
+    const n2 = [k2 * m2[0] - m1[0], k2 * m2[1] - m1[1], k2 * m2[2] - m1[2]];
+    const n3 = [k3 * m3[0] - m1[0], k3 * m3[1] - m1[1], k3 * m3[2] - m1[2]];
+    const A = (a, b) => (a[0] * b[0] + a[1] * b[1]) / (f * f) + a[2] * b[2];
+    const c = A(n2, n3) / Math.sqrt(A(n2, n2) * A(n3, n3));
+    if (!isFinite(c)) return null;
+    return { ang: Math.acos(clamp(c, -1, 1)) * 180 / Math.PI, n2, n3, A };
   }
 
   // ---------- 4) Puntaje de un lado: escalón "claro adentro, oscuro afuera" ----------
@@ -271,6 +327,67 @@
     return v.length ? v[Math.floor(v.length * 0.8)] : 0;
   }
 
+  // ---------- Segundo intento: hoja blanca sobre mesa clara ----------
+  // Con papel blanco sobre una mesa blanca el borde casi no se ve: a veces la mesa es más clara que el papel y el
+  // borde es apenas una rayita de sombra. Acá no se mira de qué lado está lo claro. La hoja se orienta con las líneas
+  // del formulario y, de cada lado, se toma la recta MÁS DE AFUERA que acompaña esa orientación (el borde del papel
+  // o su sombra), siempre que más afuera no haya letra ni líneas (si las hay, ese lado no se ve y queda el borde de
+  // la foto). El resultado pasa los mismos controles que el primer intento (rectángulo real, proporción de hoja).
+  function detectRelaxed(E, w, h, all) {
+    if (all.length < 4) return null;
+    let sx = 0, sy = 0;
+    for (const l of all) { const a = 4 * Math.atan2(l.ny, l.nx); sx += l.votes * Math.cos(a); sy += l.votes * Math.sin(a); }
+    const phi = Math.atan2(sy, sx) / 4, Q = Math.PI / 2, TOL = 12 * Math.PI / 180;
+    const fam = (l) => { let d = (Math.atan2(l.ny, l.nx) - phi) % Q; if (d < 0) d += Q; return Math.min(d, Q - d); };
+    const H = [], V = [];
+    for (const l of all) {
+      if (fam(l) > TOL) continue;
+      if (Math.abs(l.ny) >= Math.abs(l.nx)) { if (l.votes >= 0.35 * w) H.push({ l, pos: (l.rho - l.nx * w / 2) / l.ny }); }
+      else if (l.votes >= 0.35 * h) V.push({ l, pos: (l.rho - l.ny * h / 2) / l.nx });
+    }
+    // densidad de bordes: en la mesa (afuera de la hoja) casi no hay; en la hoja, letra y renglones
+    const mask = new Uint8Array(w * h);
+    for (let k = 0; k < E.count; k++) mask[E.ys[k] * w + E.xs[k]] = 1;
+    const bandEmpty = (l, inward) => {          // franja de afuera de la recta (hasta 6 % del cuadro) sin letra
+      const bw = Math.max(6, Math.round(0.06 * Math.min(w, h)));
+      let hit = 0, n = 0;
+      for (let y = 1; y < h - 1; y += 2) {
+        for (let x = 1; x < w - 1; x += 2) {
+          const d = (l.nx * x + l.ny * y - l.rho) * inward;   // > 0 hacia afuera de la hoja
+          if (d < 3 || d > bw) continue;
+          n++; hit += mask[y * w + x] | mask[y * w + x + 1] | mask[(y + 1) * w + x];
+        }
+      }
+      return n < 20 ? true : hit / n < 0.06;
+    };
+    // de cada lado, de afuera hacia adentro, la primera recta con la franja de afuera vacía
+    const choose = (arr, lo, hi, out) => {
+      const c = arr.filter((e) => e.pos >= lo && e.pos <= hi).sort((a, b) => (b.pos - a.pos) * out);
+      for (const e of c) {
+        // sentido "hacia afuera" de la recta: alejándose del centro de la foto
+        const sgn = (e.l.nx * w / 2 + e.l.ny * h / 2 - e.l.rho) > 0 ? -1 : 1;
+        if (bandEmpty(e.l, sgn)) return e.l;
+        break;                                                   // la de más afuera tiene letra afuera: no se ve el borde
+      }
+      return null;
+    };
+    const B = { top: { nx: 0, ny: 1, rho: 0.5, border: true }, bottom: { nx: 0, ny: 1, rho: h - 1.5, border: true },
+                left: { nx: 1, ny: 0, rho: 0.5, border: true }, right: { nx: 1, ny: 0, rho: w - 1.5, border: true } };
+    const top = choose(H, -0.02 * h, 0.3 * h, -1) || B.top, bottom = choose(H, 0.7 * h, 1.02 * h, 1) || B.bottom;
+    const left = choose(V, -0.02 * w, 0.3 * w, -1) || B.left, right = choose(V, 0.7 * w, 1.02 * w, 1) || B.right;
+    const nb = [top, bottom, left, right].filter((l) => l.border).length;
+    if (nb > 2) return null;
+    const pts = [intersect(top, left), intersect(top, right), intersect(bottom, right), intersect(bottom, left)];
+    const margin = 0.03 * Math.max(w, h);
+    if (pts.some((p) => !p || p.x < -margin || p.y < -margin || p.x > w - 1 + margin || p.y > h - 1 + margin)) return null;
+    const q = orderQuad(pts);
+    const area = polyArea(q) / (w * h);
+    if (area < 0.5 || area > 0.97) return null;
+    const shape = sheetShape(q, w, h);
+    if (!shape) return null;
+    return { quad: q, areaRatio: area, coverage: shape, borders: nb, relaxed: true };
+  }
+
   // Devuelve {quad:[TL,TR,BR,BL], areaRatio, coverage, sides} en coordenadas de la imagen recibida, o null.
   // El cuadrilátero siempre tiene forma de rectángulo (en perspectiva); si no se encuentra uno así, devuelve null.
   function detectPaper(img) {
@@ -278,7 +395,8 @@
     if (w < 40 || h < 40) return null;
     const gs = smooth(toGray(img), w, h, 2);
     const E = edgePixels(gs, w, h);
-    const lines = houghLines(E, w, h);
+    const HL = houghLines(E, w, h, gs);
+    const lines = HL.strict.slice();
     // los bordes de la foto también sirven de lado (hoja más grande que el cuadro)
     lines.push({ nx: 0, ny: 1, rho: 0.5, border: true }, { nx: 0, ny: -1, rho: -(h - 1.5), border: true },
                { nx: 1, ny: 0, rho: 0.5, border: true }, { nx: -1, ny: 0, rho: -(w - 1.5), border: true });
@@ -311,10 +429,11 @@
         const pts = [intersect(a1, b1), intersect(a1, b2), intersect(a2, b2), intersect(a2, b1)];
         if (pts.some((p) => !p || p.x < -margin || p.y < -margin || p.x > w - 1 + margin || p.y > h - 1 + margin)) continue;
         const q = orderQuad(pts);
-        const shape = rectShape(q, w, h);
+        const shape = sheetShape(q, w, h);
         if (!shape) continue;
         const area = polyArea(q) / (w * h);
-        if (area < 0.12) continue;
+        const nb = (a1.border ? 1 : 0) + (a2.border ? 1 : 0) + (b1.border ? 1 : 0) + (b2.border ? 1 : 0);
+        if (area < (nb ? 0.4 : 0.12)) continue;            // si la hoja sigue afuera del cuadro, se ve grande
         // a qué recta corresponde cada lado del cuadrilátero ordenado
         const ls = [a1, a2, b1, b2];
         const sideLine = (A, B) => {
@@ -344,7 +463,7 @@
     // ya recortada, o una mesa sin hoja, no se recortan).
     let best = null;
     for (const f of found) if (!best || f.score > best.score) best = f;
-    if (!best) return null;
+    if (!best) return detectRelaxed(E, w, h, HL.all);
     if (best.area > 0.97) return null;                                  // ya es una foto recortada
     const quad = best.q.map((p) => ({ x: p.x, y: p.y }));
     return { quad, areaRatio: best.area, coverage: best.score, sides: best.S.map((s) => Math.round(s * 100) / 100), borders: best.borders };
@@ -608,7 +727,7 @@
       final = sideCorners(sides);
       const ar = polyArea(final) / Math.max(1, polyArea(quad));
       if (final.some((p, i) => !isFinite(p.x) || !isFinite(p.y) || dist(p, quad[i]) > tol) || ar < 0.8 || ar > 1.25 ||
-          !rectShape(final, w * 0.3, h * 0.3)) final = null;
+          !sheetShape(final, w * 0.3, h * 0.3, w, h)) final = null;
     }
     if (!final) {
       const q = quad.map((p) => { const d = Math.max(1, dist(p, { x: cx, y: cy })); return { x: p.x + (cx - p.x) * inset / d, y: p.y + (cy - p.y) * inset / d }; });
@@ -636,19 +755,9 @@
     const [TL, TR, BR, BL] = quad;
     const simple = (dist(TL, TR) + dist(BL, BR)) / (dist(TL, BL) + dist(TR, BR));
     let r = simple;
-    const f = 0.75 * Math.max(w, h), u0 = w / 2, v0 = h / 2;
-    const m = (p) => [p.x - u0, p.y - v0, 1];
-    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    const m1 = m(TL), m2 = m(TR), m3 = m(BL), m4 = m(BR);
-    const c14 = cross(m1, m4);
-    const k2 = dot(c14, m3) / dot(cross(m2, m4), m3), k3 = dot(c14, m2) / dot(cross(m3, m4), m2);
-    const n2 = [k2 * m2[0] - m1[0], k2 * m2[1] - m1[1], k2 * m2[2] - m1[2]];
-    const n3 = [k3 * m3[0] - m1[0], k3 * m3[1] - m1[1], k3 * m3[2] - m1[2]];
-    const num = (n2[0] * n2[0] + n2[1] * n2[1]) / (f * f) + n2[2] * n2[2];
-    const den = (n3[0] * n3[0] + n3[1] * n3[1]) / (f * f) + n3[2] * n3[2];
-    if (isFinite(num) && isFinite(den) && den > 0) {
-      const est = Math.sqrt(num / den);
+    const s3 = sheet3D(quad, w, h);
+    if (s3) {
+      const est = Math.sqrt(s3.A(s3.n2, s3.n2) / s3.A(s3.n3, s3.n3));
       if (isFinite(est) && est > 0.3 && est < 3.3 && Math.abs(Math.log(est / simple)) < 0.35) r = est;
     }
     // se ajusta a una medida conocida si está cerca (en vertical o en apaisado)
@@ -745,8 +854,15 @@
 
   // Todo junto, sobre la foto grande: ajuste fino de los bordes + enderezado (+ aplanado si la hoja está curvada).
   // quad: esquinas aproximadas en coordenadas de img (por ejemplo, las de detectPaper escaladas).
-  function process(img, quad, maxSide) {
-    const rf = refineQuad(img, quad);
+  // opts.relaxed: la hoja salió del segundo intento (mesa clara): no se vuelve a medir (el borde no tiene escalón) y
+  // el recuadro se agranda un pelito, así una línea impresa del borde del formulario no queda cortada.
+  function process(img, quad, maxSide, opts) {
+    let rf;
+    if (opts && opts.relaxed) {
+      const cx = quad.reduce((s, p) => s + p.x, 0) / 4, cy = quad.reduce((s, p) => s + p.y, 0) / 4;
+      const grow = 0.006 * Math.max(dist(quad[0], quad[2]), dist(quad[1], quad[3]));
+      rf = { quad: quad.map((p) => { const d = Math.max(1, dist(p, { x: cx, y: cy })); return { x: p.x + (p.x - cx) * grow / d, y: p.y + (p.y - cy) * grow / d }; }), sides: null, refined: false };
+    } else rf = refineQuad(img, quad);
     const ratio = aspectRatio(rf.quad, img.width, img.height);
     const out = warp(img, rf.quad, maxSide, { ratio, refined: rf });
     return { img: out, quad: rf.quad, info: { refined: rf.refined, ratio: Math.round(ratio * 1000) / 1000, bow: out.bow } };

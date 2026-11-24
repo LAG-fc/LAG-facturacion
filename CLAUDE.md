@@ -64,21 +64,34 @@ There are two kinds of modules.
 
 ### Paper crop and filters (v8.7, CamScanner-style)
 
-`crop.js` (`window.Crop`) finds and straightens the sheet. The owner's rule: the frame is ALWAYS a rectangle (seen in perspective), never an arbitrary polygon.
+`crop.js` (`window.Crop`) finds and straightens the sheet. The owner's rule: the frame is ALWAYS a rectangle (seen in perspective), never an arbitrary polygon. When in doubt, don't crop: a distorted crop is the worst outcome.
 
 - `detectPaper(img)` runs on a ≤480 px copy (live loop every 400 ms and once per capture). It finds Sobel edges, then a Hough transform with polarity (each line remembers its bright side), and pairs near-parallel lines into quads. Corners are line intersections, so a finger or shadow on a corner does not matter.
-  - Shape check `rectShape`: convex, angles 60–120°, opposite sides ratio ≥ 0.55.
+  - `houghLines` marks printed lines as `thin`: two opposite-polarity edges ≤ 4.5 px apart with the same brightness on both outer sides. They are kept out of the strict search, so form rules don't crowd out the paper edge.
+  - Shape check `sheetShape`:
+    - convex, angles 60–120°, opposite sides ratio ≥ 0.55;
+    - `sheet3D` (Zhang–He with f = 0.75·max side): the reconstructed sheet must have 90° ± 8° corners and a short/long ratio ≥ 0.55. Real sheets give ≤ 7° even at a 35° tilt. A fold edge or a header strip fails this.
   - Each side needs a bright-inside/dark-outside step along ≥ 40 % of it, and its outside band (70th percentile) darker than the inside paper by ≥ 10. This rejects printed table lines, already-cropped scans and photos without paper.
-  - Image borders count as sides (sheet bigger than the frame), at most 2. Corners may fall up to 10 % outside the frame; `warp` fills that part with white.
-- `process(img, quad, maxSide)` runs on the full-res photo. `refineQuad` re-measures each side with perpendicular profiles, picks the continuous edge with RANSAC (text strokes are rejected), fits a line or a quadratic (curved sheet), intersects them in 2 passes and insets ~0.2 %. Then `aspectRatio` (Zhang–He with phone focal length; snaps to remito 0.83 ±9 %, A4, oficio) and `warp` (homography + boundary-blend dewarp of curved edges).
-- Synthetic test bench: remito scenes generated in Python (backgrounds, perspective, curvature, shadow, glare, finger, noise) with ground-truth corners, run in Playwright, plus `Lectura.findTable` on the output. It lived in the session scratchpad, not in the repo.
+  - Image borders count as sides (sheet bigger than the frame), at most 2, and then the quad must cover ≥ 40 % of the frame. Corners may fall up to 10 % outside the frame; `warp` fills that part with white.
+  - If the strict search finds nothing, `detectRelaxed` runs. It is meant for white paper on a white table, where the edge is only a shadow line or the table is brighter than the paper. Polarity is ignored. The sheet orientation comes from the form lines. For each side it takes the outermost aligned line whose outside band has no text, otherwise the image border. It returns `relaxed: true`. Then `process(..., { relaxed })` skips `refineQuad` and grows the quad by 0.6 %.
+- `process(img, quad, maxSide, opts)` runs on the full-res photo:
+  - `refineQuad` re-measures each side with perpendicular profiles and picks the continuous edge with RANSAC (text strokes are rejected). It fits a line or a quadratic (curved sheet), intersects them in 2 passes and insets ~0.2 %.
+  - `aspectRatio` snaps to remito 0.83 ±9 %, A4 or oficio.
+  - `warp` applies the homography plus a boundary-blend dewarp of curved edges.
+- Test data:
+  - Real remito photos: the owner's Google Drive has iPhone photos (`IMG_0xxx.JPG`, 4284×5712, EXIF-rotated). Find them with the Google Drive connector (`search_files` with `mimeType contains 'image/'` or `fullText contains 'remito'`). `download_file_content` saves the full-res file under the session's `tool-results` folder. Typical conditions: a close-up of a talonario page that fills the frame, the folded copy over the top-left corner, a white table, binder holes.
+  - A synthetic bench of Python-generated scenes with ground-truth corners, run in Playwright together with `Lectura.findTable`. It lived in the session scratchpad, not in the repo.
 
 `enhance.js` (`window.Enhance.apply(img, mode)`, modes `mejorado` | `gris` | `documento` | `color`):
 
-- `flatten`: per-channel background map (85th percentile per block, content blocks inpainted, smoothed) and division. This removes shadows and color cast.
-- Edge-preserving luma denoise and chroma blur.
-- `mejorado`/`gris`: tone curve (black point at the 0.5th percentile, paper → 255), saturation boost on ink, unsharp mask.
-- `documento`: Sauvola (k = 0.2) with a short ramp below the threshold, floored by the gray tone curve so faint dotted lines survive. `Lectura.findTable` finds the table less often in `documento` than in `mejorado`; keep `mejorado` as the default.
+- `mejorado` is `provenEnhance`, the v8.6 algorithm unchanged, followed by a chroma cleanup.
+  - `provenEnhance`: per-channel illumination map (70th percentile, dilated), levels and sharpening.
+  - Chroma cleanup: chroma is blurred, zeroed on paper and boosted 1.35× on ink. Green is recomputed so luma (77·R + 150·G + 29·B) is exactly unchanged.
+  - Why the v8.6 core was kept: `Lectura.findTable` is very sensitive to the contrast of the dotted rows. A new tone curve and denoise lost tables on real photos, and ±1 luma changes can flip borderline photos.
+- `gris` is the luma of `provenEnhance`, so it reads the same as `mejorado`.
+- `documento` runs `flatten`, an edge-preserving denoise, then Sauvola (k = 0.2) with a short ramp, floored by a gray tone curve.
+  - `flatten`: per-channel background map (85th percentile, content blocks inpainted) and division.
+  - `findTable` finds the table less often here; keep `mejorado` as the default.
 
 ### Generated data files
 
@@ -119,7 +132,7 @@ Web pages can't call iOS Live Text, so an iOS Shortcut named **"LAG Cantidades"*
    - **Any other table (mode `renglon`).** `Lectura.findRows` produces full-width rows labelled `Rnn =`, and the product is matched by description.
    - **No table found.** The whole page is added as `HOJA n COMPLETA`.
 
-   It has been tested against 15 real CamScanner remito photos, 75 deformed variants of them (rotated, perspective, curved), and one hand-held phone photo. None of these are in the repo; ask the owner for samples if needed.
+   It has been tested against 15 real CamScanner remito photos, 75 deformed variants of them (rotated, perspective, curved), and one hand-held phone photo. None of these are in the repo. Real phone photos of remitos are in the owner's Google Drive (see "Test data" above).
 2. It shares that image via `navigator.share({ files })` with only files, so the Shortcut receives a pure image input.
 3. "Pegar lectura" calls `navigator.clipboard.readText()`, with a textarea fallback.
 4. `Lectura.parse` handles labels split across lines, fixes confusable characters (`l2O` → 120) and skips "OC ####" notes.

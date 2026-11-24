@@ -203,7 +203,7 @@
     for (let p = 0; p < Y.length; p += 7) { if (Y[p] < 200) continue; hist[Math.min(63, Math.abs(Y[p] - bl[p]))]++; cnt++; }
     let acc = 0, mad = 2;
     for (let k = 0; k < 64; k++) { acc += hist[k]; if (acc * 2 >= cnt) { mad = k; break; } }
-    const T = Math.max(4, Math.min(20, 3 * 1.4826 * Math.max(1, mad)));
+    const T = Math.max(3, Math.min(9, 2 * 1.4826 * Math.max(1, mad)));
     for (let p = 0; p < Y.length; p++) {
       const d = bl[p] - Y[p];
       const a = 1 - Math.abs(d) / T;
@@ -231,56 +231,141 @@
     return lut;
   }
 
-  // Máscara de enfoque sobre la luminancia (bordes de letra más nítidos).
-  function sharpen(Y, w, h, amount) {
-    const r = Math.max(1, Math.round(Math.min(w, h) / 1400));
-    const bl = boxBlur(boxBlur(Y, w, h, r), w, h, r);
-    for (let p = 0; p < Y.length; p++) Y[p] = clamp255(Y[p] + amount * (Y[p] - bl[p]));
-    return Y;
-  }
-
   function lumaOf(data, n) {
     const Y = new Uint8ClampedArray(n);
     for (let p = 0, i = 0; p < n; p++, i += 4) Y[p] = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29 + 128) >> 8;
     return Y;
   }
 
-  // "Color mejorado": papel blanco puro, tinta con color vivo y bordes nítidos.
-  function magicColor(img) {
+  // ---------- Realce probado con remitos reales ----------
+  // Es el "Color mejorado" de las versiones anteriores (afinado con fotos reales de remitos): la lectura de cantidades
+  // (Lectura.findTable) encuentra mejor los renglones punteados con este contraste. Por canal (R, G, B):
+  //   1) aplana la luz con un mapa por bloques (percentil 70, dilatado para no oscurecer sellos o manchas de tinta),
+  //   2) blancos más blancos y negros más oscuros (curva común), 3) nitidez leve.
+  function illuminationMap(lum, w, h, B) {
+    const bw = Math.ceil(w / B), bh = Math.ceil(h / B);
+    let map = new Float32Array(bw * bh);
+    const hist = new Uint32Array(64);
+    for (let by = 0; by < bh; by++) {
+      for (let bx = 0; bx < bw; bx++) {
+        hist.fill(0);
+        let count = 0;
+        const y1 = Math.min(h, (by + 1) * B), x1 = Math.min(w, (bx + 1) * B);
+        for (let y = by * B; y < y1; y++) for (let x = bx * B; x < x1; x++) { hist[lum[y * w + x] >> 2]++; count++; }
+        const target = count * 0.7;
+        let acc = 0, bin = 63;
+        for (let k = 0; k < 64; k++) { acc += hist[k]; if (acc >= target) { bin = k; break; } }
+        map[by * bw + bx] = bin * 4 + 2;
+      }
+    }
+    const dil = new Float32Array(bw * bh);
+    for (let by = 0; by < bh; by++) {
+      for (let bx = 0; bx < bw; bx++) {
+        let m = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const yy = by + dy, xx = bx + dx;
+          if (yy < 0 || yy >= bh || xx < 0 || xx >= bw) continue;
+          const v = map[yy * bw + xx]; if (v > m) m = v;
+        }
+        dil[by * bw + bx] = m;
+      }
+    }
+    map = dil;
+    for (let pass = 0; pass < 2; pass++) {
+      const sm = new Float32Array(bw * bh);
+      for (let by = 0; by < bh; by++) {
+        for (let bx = 0; bx < bw; bx++) {
+          let s = 0, c = 0;
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const yy = by + dy, xx = bx + dx;
+            if (yy < 0 || yy >= bh || xx < 0 || xx >= bw) continue;
+            s += map[yy * bw + xx]; c++;
+          }
+          sm[by * bw + bx] = s / c;
+        }
+      }
+      map = sm;
+    }
+    return { map, bw, bh };
+  }
+
+  function provenEnhance(img) {
     const { data, width: w, height: h } = img;
     const n = w * h;
-    const Y = lumaOf(data, n);
-    // color = diferencia de cada canal con la luminancia (sin el ruido de color: se promedia en 5×5)
-    let Cb = new Int16Array(n), Cr = new Int16Array(n);
-    for (let p = 0, i = 0; p < n; p++, i += 4) { Cb[p] = data[i + 2] - Y[p]; Cr[p] = data[i] - Y[p]; }
-    Cb = boxBlur(Cb, w, h, 2); Cr = boxBlur(Cr, w, h, 2);
-    denoiseLuma(Y, w, h);
-    const lut = toneLUT(Y, 1.25, 228);
-    for (let p = 0; p < n; p++) Y[p] = lut[Y[p]];
-    sharpen(Y, w, h, 0.7);
-    const SAT = 1.4;
-    for (let p = 0, i = 0; p < n; p++, i += 4) {
-      const y = Y[p];
-      // sobre el papel (claro) no queda color: blanco puro, sin manchitas
-      const k = y >= 245 ? 0 : y <= 190 ? SAT : SAT * (245 - y) / 55;
-      const cb = Cb[p] * k, cr = Cr[p] * k;
-      const r = y + cr, b = y + cb;
-      data[i] = clamp255(r);
-      data[i + 1] = clamp255((y - 0.299 * r - 0.114 * b) / 0.587);
-      data[i + 2] = clamp255(b);
+    const B = Math.max(12, Math.round(Math.min(w, h) / 40));
+    const maps = [], floors = [];
+    let bw = 0, bh = 0;
+    for (let c = 0; c < 3; c++) {
+      const ch = new Uint8Array(n);
+      for (let i = c, p = 0; p < n; i += 4, p++) ch[p] = data[i];
+      const m = illuminationMap(ch, w, h, B);
+      bw = m.bw; bh = m.bh;
+      maps.push(m.map);
+      const sorted = Array.from(m.map).sort((a, b) => a - b);
+      floors.push(Math.max(60, (sorted[Math.floor(sorted.length * 0.75)] || 200) * 0.55));
+    }
+    for (let y = 0; y < h; y++) {
+      const fy = Math.min(bh - 1, Math.max(0, y / B - 0.5));
+      const y0 = Math.floor(fy), y1 = Math.min(bh - 1, y0 + 1), ty = fy - y0;
+      for (let x = 0; x < w; x++) {
+        const fx = Math.min(bw - 1, Math.max(0, x / B - 0.5));
+        const x0 = Math.floor(fx), x1 = Math.min(bw - 1, x0 + 1), tx = fx - x0;
+        const i = (y * w + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const map = maps[c];
+          const L = (map[y0 * bw + x0] * (1 - tx) + map[y0 * bw + x1] * tx) * (1 - ty) +
+                    (map[y1 * bw + x0] * (1 - tx) + map[y1 * bw + x1] * tx) * ty;
+          data[i + c] = clamp255(data[i + c] * Math.min(3, 247 / Math.max(L, floors[c])));
+        }
+      }
+    }
+    const hist = new Uint32Array(256);
+    for (let i = 0; i < data.length; i += 4) hist[(data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8]++;
+    let acc = 0, bp = 0;
+    for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= n * 0.006) { bp = v; break; } }
+    bp = Math.min(bp, 90);
+    const wp = 232, lut = new Uint8Array(256);
+    for (let v = 0; v < 256; v++) lut[v] = Math.round(255 * Math.pow(Math.min(1, Math.max(0, (v - bp) / (wp - bp))), 1.2));
+    for (let i = 0; i < data.length; i += 4) { data[i] = lut[data[i]]; data[i + 1] = lut[data[i + 1]]; data[i + 2] = lut[data[i + 2]]; }
+    const r = Math.max(1, Math.round(Math.min(w, h) / 1000));
+    for (let c = 0; c < 3; c++) {
+      const ch = new Uint8Array(n);
+      for (let i = c, p = 0; p < n; i += 4, p++) ch[p] = data[i];
+      const bl = boxBlur(boxBlur(ch, w, h, r), w, h, r);
+      for (let i = c, p = 0; p < n; i += 4, p++) data[i] = clamp255(ch[p] + 0.7 * (ch[p] - bl[p]));
     }
     return img;
   }
 
-  // "Escala de grises": igual que el realce, sin color.
-  function grayscale(img) {
+  // "Color mejorado": el realce probado + limpieza del color (no toca el gris de cada punto, así la lectura de
+  // cantidades ve exactamente lo mismo): el papel queda blanco sin manchitas de colores y la tinta, más viva.
+  function magicColor(img) {
+    provenEnhance(img);
     const { data, width: w, height: h } = img;
     const n = w * h;
     const Y = lumaOf(data, n);
-    denoiseLuma(Y, w, h);
-    const lut = toneLUT(Y, 1.15, 230);
-    for (let p = 0; p < n; p++) Y[p] = lut[Y[p]];
-    sharpen(Y, w, h, 0.6);
+    let Cb = new Int16Array(n), Cr = new Int16Array(n);
+    for (let p = 0, i = 0; p < n; p++, i += 4) { Cb[p] = data[i + 2] - Y[p]; Cr[p] = data[i] - Y[p]; }
+    Cb = boxBlur(Cb, w, h, 2); Cr = boxBlur(Cr, w, h, 2);
+    const SAT = 1.35;
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      const y = Y[p];
+      const k = y >= 245 ? 0 : y <= 190 ? SAT : SAT * (245 - y) / 55;
+      let r = Math.round(clamp255(y + Cr[p] * k)), b = Math.round(clamp255(y + Cb[p] * k));
+      // el verde se calcula para que el gris (como lo mide la lectura: 77·R + 150·G + 29·B) quede exactamente igual
+      let g = Math.round((256 * y + 128 - 77 * r - 29 * b) / 150);
+      if (g < 0 || g > 255) { r = g = b = y; }                       // fuera de rango: ese punto queda gris
+      data[i] = r; data[i + 1] = g; data[i + 2] = b;
+    }
+    return img;
+  }
+
+  // "Escala de grises": el mismo realce, sin color.
+  function grayscale(img) {
+    provenEnhance(img);
+    const { data } = img;
+    const n = img.width * img.height;
+    const Y = lumaOf(data, n);
     for (let p = 0, i = 0; p < n; p++, i += 4) data[i] = data[i + 1] = data[i + 2] = Y[p];
     return img;
   }
@@ -330,9 +415,8 @@
   // Aplica el modo de imagen elegido: "mejorado", "gris", "documento" o "color" (sin cambios).
   function apply(img, mode) {
     if (mode === "color") return img;
-    flatten(img);
     if (mode === "gris") return grayscale(img);
-    if (mode === "documento") return blackWhite(img);
+    if (mode === "documento") return blackWhite(flatten(img));
     return magicColor(img);
   }
 
