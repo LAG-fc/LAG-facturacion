@@ -1,4 +1,4 @@
-// lotes-store.js — Dónde se guardan los "PDF guardados" (cada lote de remitos escaneados), v8.3.
+// lotes-store.js — Dónde se guardan los "PDF guardados" (cada lote de remitos escaneados), v8.3 (v8.8: la OC se elige al escanear).
 //
 // · Con la sesión iniciada (cuenta aprobada) se guardan en la cuenta del usuario, en Cloud Firestore
 //   (Firebase, plan gratuito "Spark", sin tarjeta). Así se sacan las fotos con el celular y la tabla de
@@ -213,8 +213,9 @@
       return { items: out, error };
     },
 
-    // Guarda las fotos recién escaneadas. shots = [{blob, w, h}]. Devuelve {id, cloud, reason}
-    async save(shots, periodo, onProgress) {
+    // Guarda las fotos recién escaneadas. shots = [{blob, w, h}], extra = {oc} (la OC elegida antes de escanear).
+    // Devuelve {id, cloud, reason}
+    async save(shots, periodo, onProgress, extra) {
       const c = cloud();
       const fotos = [];
       for (const s of shots) fotos.push({ bytes: new Uint8Array(await s.blob.arrayBuffer()), w: s.w, h: s.h });
@@ -223,7 +224,7 @@
         id: newId(), creado: now, actualizado: now, paginas: fotos.length, partes: 0,
         tamano: fotos.reduce((s, f) => s + f.bytes.length, 0), subido: false,
         periodo: Object.assign({}, periodo), miniatura: await miniatura(shots[0].blob),
-        tabla: { oc: "", valores: [], extras: [] }, estado: "pendiente", enviado: null, carpeta: "", archivo: "",
+        tabla: { oc: String((extra && extra.oc) || "").replace(/\D+/g, ""), remitos: fotos.length, filas: [], valores: [], extras: [] }, estado: "pendiente", enviado: null, carpeta: "", archivo: "",
         uid: c ? c.uid : null, pendiente: !!c, error: ""
       };
       let savedLocal = true;

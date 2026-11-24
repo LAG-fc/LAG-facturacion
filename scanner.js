@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "8.7";
+  const APP_VERSION = "8.8";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 
@@ -20,7 +20,7 @@
     "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE",
     "SANDWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
   ];
-  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n"), lecturaPreguntar: true };
+  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n"), oc: "" };
   let settings = { ...DEFAULTS };
   let stream = null;
   let stillOk = null;               // null = sin probar; true/false = se puede / no se puede la foto de máxima resolución
@@ -39,8 +39,8 @@
   function loadSettings() {
     try {
       const st = { ...DEFAULTS, ...JSON.parse(localStorage.getItem("settings") || "{}") };
-      ["apiKey", "sensitivity", "decimals", "catalogVersion", "lector", "zones"].forEach((k) => delete st[k]);   // restos de versiones anteriores
-      ["visionUsage", "rlV8", "despDia", "totals"].forEach((k) => localStorage.removeItem(k));          // lector de remitos (v8.0-8.2) y tabla suelta
+      ["apiKey", "sensitivity", "decimals", "catalogVersion", "lector", "zones", "lecturaPreguntar"].forEach((k) => delete st[k]);   // restos de versiones anteriores
+      ["visionUsage", "rlV8", "despDia", "totals", "lecturaAlias"].forEach((k) => localStorage.removeItem(k));   // lectores de cantidades (v8.0-8.7) y tabla suelta
       return st;
     } catch (e) { return { ...DEFAULTS }; }
   }
@@ -596,12 +596,31 @@
   });
   setInterval(refreshPeriod, 60000);
 
-  // ---------- Guardar PDF ----------
-  // Las fotos se guardan como un "PDF guardado" (lotes.js): en la cuenta del usuario si hay sesión, si no en este
-  // dispositivo. La tabla de recepciones y el envío al borrador de Gmail se hacen después, desde cualquier dispositivo.
+  // ---------- Orden de compra (OC) ----------
+  // Se elige antes de escanear y se guarda con los remitos (queda en el título del PDF guardado, el nombre del PDF y la
+  // carpeta de Drive). Después de "Guardar remitos" se borra, para que el próximo lote no salga con la OC anterior.
+  const scanOc = $("scanOc"), scanOcWrap = $("scanOcWrap");
+  function refreshOc() {
+    const oc = Period.cleanOc(settings.oc);
+    scanOcWrap.classList.toggle("no-oc", !oc);
+    $("saveHint").textContent = oc
+      ? "Se guardan con la OC " + oc + " en “PDF guardados”. Después cargás la tabla de recepciones desde la computadora y tocás “Guardar PDF”."
+      : "Elegí la OC arriba antes de escanear. Al guardar, los remitos quedan en “PDF guardados”: después cargás la tabla de recepciones desde la computadora y tocás “Guardar PDF”.";
+  }
+  scanOc.addEventListener("input", () => {
+    const c = Period.cleanOc(scanOc.value);
+    if (c !== scanOc.value) scanOc.value = c;
+    settings.oc = c; persistSettings(); refreshOc();
+  });
+  scanOc.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); scanOc.blur(); } });
+
+  // ---------- Guardar remitos ----------
+  // Las fotos se guardan como un "PDF guardado" (lotes.js) con la OC elegida: en la cuenta del usuario si hay sesión,
+  // si no en este dispositivo. La tabla de recepciones y "Guardar PDF" (Drive + borrador de Gmail) se hacen después,
+  // desde la computadora o cualquier otro dispositivo.
   function setSaving(on, label) {
     saving = on;
-    saveLabel.textContent = label || "Guardar PDF";
+    saveLabel.textContent = label || "Guardar remitos";
     saveBtn.classList.toggle("is-busy", on);
     syncCards();
   }
@@ -613,17 +632,22 @@
     if (errors && !(await askConfirm(errors + " foto(s) no se pudieron procesar y no se van a guardar.\n\n¿Seguir igual?", "Seguir", "Cancelar"))) return;
     const ok = pages.filter((p) => p.status === "ok" && p.blob);
     if (!ok.length) { await showMessage("No hay fotos listas para guardar."); return; }
+    const oc = Period.cleanOc(settings.oc);
+    if (!oc && !(await askConfirm("No elegiste la orden de compra (OC).\n\n¿Guardar los remitos igual? La OC la podés escribir después, al cargar la tabla de recepciones.", "Guardar sin OC", "Elegir la OC"))) {
+      scanOc.focus(); return;
+    }
     const e0 = epoch;
     setSaving(true, "Guardando…");
     try {
       const shots = ok.map((p) => ({ blob: p.blob, w: p.w, h: p.h, thumb: p.thumbUrl }));
-      const r = await window.Lotes.saveBatch(shots, currentPeriod(), (done, total) => setSaving(true, "Subiendo " + done + " de " + total + "…"));
+      const r = await window.Lotes.saveBatch(shots, currentPeriod(), (done, total) => setSaving(true, "Subiendo " + done + " de " + total + "…"), { oc });
       setSaving(false);
+      if (Period.cleanOc(settings.oc) === oc) { settings.oc = ""; scanOc.value = ""; persistSettings(); refreshOc(); }
+      const what = (oc ? "OC " + oc + " · " : "") + ok.length + (ok.length === 1 ? " remito" : " remitos");
       if (e0 === epoch) clearAll(r.cloud
-        ? "Guardado ✔ Está en “PDF guardados”: completá la tabla de recepciones cuando quieras, desde acá o desde la computadora."
-        : "Guardado en este dispositivo ✔ " + (r.reason || ""));
-      if (!r.cloud && r.reason) await showMessage("El PDF quedó guardado en este dispositivo, pero no se pudo subir a tu cuenta:\n\n" + r.reason + "\n\nSe vuelve a intentar solo; también podés tocar “Subir” en la lista.");
-      if (window.Lotes.offerReading) window.Lotes.offerReading(r.id).catch((e) => console.warn("Lectura con el iPhone:", e));
+        ? "Guardado ✔ " + what + ". Está en “PDF guardados”: cargá la tabla de recepciones desde la computadora y tocá “Guardar PDF”."
+        : "Guardado en este dispositivo ✔ " + what + ". " + (r.reason || ""));
+      if (!r.cloud && r.reason) await showMessage("Los remitos quedaron guardados en este dispositivo, pero no se pudieron subir a tu cuenta:\n\n" + r.reason + "\n\nSe vuelve a intentar solo; también podés tocar “Subir” en la lista.");
     } catch (e) {
       console.error(e);
       setSaving(false);
@@ -671,16 +695,17 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
-  // Arma el PDF de un lote: pages = [{bytes (JPEG), w, h}], rows = [{name, qtyText}]
+  // Arma el PDF de un lote: pages = [{bytes (JPEG), w, h}], rows = [{name, qtyText, cells: [texto por remito]}],
+  // cols = cantidad de remitos (columnas de la tabla de recepciones)
   const b64ToBytes = (b64) => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
-  function makePdf(data, name, oc, period, rows) {
+  function makePdf(data, name, oc, period, rows, cols) {
     const L = window.LOGO_PDF;
     const d = new Date(), pad = (n) => String(n).padStart(2, "0");
     return buildPdf(data, {
       company: COMPANY, title: name, oc, periodText: Period.text(period),
       date: pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear(),
       logo: L ? { bytes: b64ToBytes(L.b64), w: L.w, h: L.h } : null,
-      summary: rows.length ? { rows, note: "Cantidades ingresadas manualmente por el responsable de recepción." } : null
+      summary: rows.length ? { rows, cols: cols || 0, note: "Cantidades ingresadas manualmente por el responsable de recepción." } : null
     });
   }
 
@@ -688,7 +713,6 @@
   settingsBtn.addEventListener("click", () => {
     catalogInput.value = settings.catalog;
     hiResChk.checked = !!settings.hiRes;
-    $("lecturaChk").checked = settings.lecturaPreguntar !== false;
     $("bridgeUrl").value = settings.bridgeUrl || "";
     $("bridgeKey").value = settings.bridgeKey || "";
     $("bridgeMsg").textContent = ""; $("bridgeMsg").className = "bridge-msg";
@@ -698,7 +722,6 @@
   $("saveSettings").addEventListener("click", () => {
     settings.catalog = catalogInput.value;
     settings.hiRes = hiResChk.checked;
-    settings.lecturaPreguntar = $("lecturaChk").checked;
     settings.bridgeUrl = $("bridgeUrl").value.trim();
     settings.bridgeKey = $("bridgeKey").value.trim();
     persistSettings();
@@ -730,6 +753,9 @@
   settings = loadSettings();
   if (settings.periodMode !== "quincenal") settings.periodMode = "semanal";
   refreshPeriod();
+  settings.oc = Period.cleanOc(settings.oc);
+  scanOc.value = settings.oc;
+  refreshOc();
   persistSettings();                 // limpia del navegador los datos de versiones anteriores
   autoCropChk.checked = settings.autoCrop !== false;
   filterSelect.value = settings.filterMode || "mejorado";

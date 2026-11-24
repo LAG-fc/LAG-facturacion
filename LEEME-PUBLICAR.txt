@@ -1,5 +1,41 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.7
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.8
 =======================================================
+
+NOVEDADES v8.8 · OC ANTES DE ESCANEAR Y TABLA DE RECEPCIONES COMO UNA PLANILLA DE EXCEL
+- SE QUITÓ LA LECTURA AUTOMÁTICA DE CANTIDADES (Atajo «LAG Cantidades» del iPhone): solo leía la primera foto.
+  Ya no aparece «Leer cantidades», «Pegar lectura», la ayuda del Atajo ni el ajuste «Cantidades con el iPhone».
+  El Atajo que está en el iPhone ya no se usa: lo podés borrar desde la app Atajos (mantené apretado > Eliminar).
+- CÓMO SE TRABAJA AHORA
+  1. En el celular, arriba de la cámara, escribí el número de la OC (al tocar el casillero aparecen las OC ya
+     usadas y las cargadas en Facturación).
+  2. Sacá las fotos de los remitos y tocá «Guardar remitos» (antes decía «Guardar PDF»). Quedan en «PDF guardados»
+     con esa OC. Si te olvidaste la OC, la página te pregunta antes de guardar (la podés escribir después).
+  3. En la computadora, abrí el lote en «PDF guardados» y completá la tabla de recepciones.
+  4. Tocá «Guardar PDF»: se arma el PDF (remitos + tabla), se sube a Drive y queda el borrador en Gmail, igual que
+     antes. El lote pasa a «Enviados».
+- LA TABLA DE RECEPCIONES ES UNA PLANILLA
+  · Un renglón por producto y UNA COLUMNA POR REMITO (Remito 1, Remito 2…), con el TOTAL de cada producto al final.
+    Ya no hace falta escribir sumas: cada remito en su columna. (Las sumas tipo 120+35 se siguen aceptando.)
+  · Al pasar a la columna de un remito, a la izquierda se muestra la foto de ese remito. Tocar el título de una
+    columna también muestra su foto.
+  · Teclado como en Excel: Enter baja (al terminar la columna pasa al remito siguiente), Tab y las flechas te
+    mueven, lo que escribís reemplaza la celda, F2 para corregir sin borrar, Esc deshace la celda.
+  · Se pueden PEGAR celdas copiadas de Excel (varias filas y columnas): se llenan desde la celda elegida.
+  · «Copiar» copia la tabla (producto + una columna por remito) para pegarla en Excel o en Facturación > Entregas.
+  · «Producto» agrega un renglón para un producto que no está en la lista (con la X se quita).
+  · Lo que escribís SE GUARDA SOLO en tu cuenta (arriba de la tabla dice «✓ Guardado en tu cuenta»). Ya no hay
+    botón «Guardar tabla».
+  · Las celdas mal escritas quedan en rojo y el total muestra «?»; «Guardar PDF» no avanza hasta corregirlas.
+  · Los lotes que ya tenías se abren bien: el total que habías cargado de cada producto queda en la columna Remito 1.
+- EL PDF: la tabla de recepciones ahora trae una columna por remito y el total (de 5 remitos en adelante la hoja de
+  la tabla va apaisada; con más de 14 remitos queda solo el total).
+- PARA FACTURACIÓN (próximo paso): la tabla queda guardada con la OC del lote, con las cantidades de cada remito y
+  el total de cada producto. La sección Facturación todavía no la usa.
+- Si el puente no está configurado en la computadora, «Guardar PDF» ofrece descargar el PDF.
+- No hace falta volver a publicar las reglas de Firestore ni el puente de Google.
+- BORRADO: lectura.js (ya no se usa).
+- CAMBIARON: index.html, styles.css, scanner.js, lotes.js, lotes-store.js, pdf.js, enhance.js (solo comentarios),
+  sw.js.
 
 NOVEDADES v8.7 · RECORTE Y FILTROS COMO UN ESCÁNER DE OFICINA (estilo CamScanner)
 - RECORTE DE LA HOJA (recuadro verde)

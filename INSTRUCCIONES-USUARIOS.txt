@@ -13,7 +13,7 @@ QUÉ HACE
   Cuando hay cuentas esperando aprobación aparece un punto amarillo sobre tus iniciales.
 - Sin internet: si la sesión ya estaba iniciada en ese dispositivo, la aplicación abre igual.
   Para iniciar sesión por primera vez en un dispositivo hace falta internet.
-- PDF guardados (v8.3): cada persona guarda en su cuenta los remitos escaneados ("Guardar PDF") y los ve desde
+- PDF guardados (v8.3): cada persona guarda en su cuenta los remitos escaneados ("Guardar remitos") y los ve desde
   cualquier dispositivo donde inicie sesión: por ejemplo, saca las fotos con el celular y carga la tabla de
   recepciones desde la computadora. Nadie más ve esos PDF, ni siquiera un administrador.
 

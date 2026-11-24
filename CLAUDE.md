@@ -6,7 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a static PWA called "Escáner de remitos", built for LAG Panificados SRL, a small bakery in Argentina. It does three things:
 
-- **Remitos tab:** scans delivery notes (remitos) with the camera, CamScanner-style (crop + enhance). Each scanned batch is saved as a "PDF guardado" (lote) in the user's account. The reception table (quantities per product + OC) is filled in later, possibly from another device. Only then is the PDF built and sent to Google Drive and a Gmail draft.
+- **Remitos tab:** the flow since v8.8:
+  1. On the phone, pick the OC number (`#scanOc`), then scan the delivery notes (remitos) with the camera, CamScanner-style (crop + enhance).
+  2. "Guardar remitos" saves the batch as a "PDF guardado" (lote) with that OC, in the user's account.
+  3. On the PC, the reception table is filled in an Excel-like grid: one row per product, one column per remito, plus a total.
+  4. "Guardar PDF" builds the PDF (remitos + table) and sends it to Google Drive and a Gmail draft.
+
+  The table stays attached to the lote's OC for the Facturación tab. The owner plans to wire it into Facturación next.
 - **Facturación tab:** builds billing tables from purchase orders (OC) and the monthly Excel of deliveries ("Despachos").
 - **Billing progress:** tracks what percentage of each OC is already invoiced.
 
@@ -55,11 +61,14 @@ There are two kinds of modules.
 
 - **Pure, DOM-free modules**, wrapped as `(function (root) { ... })(typeof self !== "undefined" ? self : this)`:
   - Ending: `if (typeof module === "object" && module.exports) module.exports = api; else root.X = api;`
-  - Global names: `Crop`, `Enhance`, `Period`, `PdfCrypt`, `PdfText`, `OcParse`, `FactParse`, `Xlsx`, `Despachos`, `buildPdf`, `Lectura`.
+  - Global names: `Crop`, `Enhance`, `Period`, `PdfCrypt`, `PdfText`, `OcParse`, `FactParse`, `Xlsx`, `Despachos`, `buildPdf`.
   - Dependencies between them use `require` in Node and `root.X` in the browser. For example, `despachos.js` and `factparse.js` depend on `OcParse`.
 - **UI controllers**, as arrow IIFEs that touch the DOM:
   - `scanner.js` owns the Remitos tab: camera, capture, crop, enhance, the current batch of thumbnails, settings, the bridge call and PDF assembly. It exposes `window.RemitosApp`: `settings()`, `pages()`, `catalog()`, `setActive(on)`, `askConfirm`, `showMessage`, `setStatus`, `bridgeReady`, `sendToBridge`, `makePdf`, `downloadBlob`.
-  - `lotes.js` owns the "PDF guardados" side panel and the lote dialog (photo viewer + reception table + send/download/delete). It exposes `window.Lotes.saveBatch`, which `scanner.js` calls from "Guardar PDF".
+  - `lotes.js` owns the "PDF guardados" side panel and the lote dialog (photo viewer + reception grid + "Guardar PDF"/download/delete). It exposes `window.Lotes`:
+    - `saveBatch(shots, periodo, onProgress, { oc })`, which `scanner.js` calls from "Guardar remitos";
+    - `refresh()`;
+    - `recepciones(oc?)`, which returns the saved tables for Facturación.
   - `oc.js` is the Facturación tab and is independent of the Remitos tab. Switching to it turns off the camera through `setActive(false)`.
 
 ### Paper crop and filters (v8.7, CamScanner-style)
@@ -80,18 +89,18 @@ There are two kinds of modules.
   - `warp` applies the homography plus a boundary-blend dewarp of curved edges.
 - Test data:
   - Real remito photos: the owner's Google Drive has iPhone photos (`IMG_0xxx.JPG`, 4284×5712, EXIF-rotated). Find them with the Google Drive connector (`search_files` with `mimeType contains 'image/'` or `fullText contains 'remito'`). `download_file_content` saves the full-res file under the session's `tool-results` folder. Typical conditions: a close-up of a talonario page that fills the frame, the folded copy over the top-left corner, a white table, binder holes.
-  - A synthetic bench of Python-generated scenes with ground-truth corners, run in Playwright together with `Lectura.findTable`. It lived in the session scratchpad, not in the repo.
+  - A synthetic bench of Python-generated scenes with ground-truth corners, run in Playwright. It lived in the session scratchpad, not in the repo.
 
 `enhance.js` (`window.Enhance.apply(img, mode)`, modes `mejorado` | `gris` | `documento` | `color`):
 
 - `mejorado` is `provenEnhance`, the v8.6 algorithm unchanged, followed by a chroma cleanup.
   - `provenEnhance`: per-channel illumination map (70th percentile, dilated), levels and sharpening.
   - Chroma cleanup: chroma is blurred, zeroed on paper and boosted 1.35× on ink. Green is recomputed so luma (77·R + 150·G + 29·B) is exactly unchanged.
-  - Why the v8.6 core was kept: `Lectura.findTable` is very sensitive to the contrast of the dotted rows. A new tone curve and denoise lost tables on real photos, and ±1 luma changes can flip borderline photos.
+  - Why the v8.6 core was kept: the old quantity reader (`Lectura.findTable`, removed in v8.8) was very sensitive to the contrast of the dotted rows. A new tone curve and denoise lost tables on real photos.
 - `gris` is the luma of `provenEnhance`, so it reads the same as `mejorado`.
 - `documento` runs `flatten`, an edge-preserving denoise, then Sauvola (k = 0.2) with a short ramp, floored by a gray tone curve.
   - `flatten`: per-channel background map (85th percentile, content blocks inpainted) and division.
-  - `findTable` finds the table less often here; keep `mejorado` as the default.
+  - Keep `mejorado` as the default.
 
 ### Generated data files
 
@@ -109,45 +118,54 @@ There are two kinds of modules.
   - `usuarios/{uid}/lotes/{id}/partes/{page-chunk}` holds the JPEG bytes as `Bytes`, in chunks of 900 KB.
   - Photos go in Firestore because Firebase Storage needs the paid Blaze plan since 2026, and the free plan is a hard requirement. The quota is 1 GiB total, and sent lotes auto-delete after 15 days.
 - **Lote fields:**
-  - `estado`: `pendiente` → `lista` (OC + at least one quantity) → `enviado`.
-  - `tabla`: `{ oc, valores: [{nombre, texto}], extras: [{nombre, texto}] }`.
+  - `estado`: `pendiente` → `lista` (OC + at least one valid quantity, no bad cells) → `enviado`. Editing a sent lote's table sets it back to `lista`/`pendiente`.
+  - `tabla` (v8.8): `{ oc, remitos, filas: [{nombre, cant: [text per remito]}], valores: [{nombre, texto: total}], extras: [] }`.
+    - `valores` carries the per-product totals, the format v8.3–8.7 read.
+    - Lotes saved before v8.8 have only `valores`/`extras`. `toWork` loads each old total into the Remito 1 column.
+    - `tabla.oc` is set at save time from the OC chosen in the scanner.
+    - `firestore.rules` only checks `tabla is map`, so the table format can change without a rules change. No arrays directly inside arrays: Firestore rejects them.
   - `periodo`: the object returned by `Period.forDate`, recomputed from `creado` when the mode changes.
 - Without a signed-in, approved account (unconfigured Firebase), lotes stay local only.
 
 The automatic handwriting reader (v8.0–8.2: `lector.js`, `digits-core.js`, `digits-model.js`, `rl.js`) was removed in v8.3 at the owner's request. It is in git history before the v8.3 commit if it is ever needed.
 
-### Reading quantities with the iPhone (v8.4)
+### Reception table (v8.8)
 
-Web pages can't call iOS Live Text, so an iOS Shortcut named **"LAG Cantidades"** acts as the bridge. The owner builds it once by hand; the steps are in the in-app help dialog `#lecHelpDialog`. It takes Share Sheet images, runs "Extract Text from Image" and copies the result to the clipboard.
+The lote dialog in `lotes.js` holds the reception grid, `table#lotGrid` (`.xl`), built by `buildGrid`.
 
-1. In the lote dialog, `lotes.js` builds a "hoja de lectura" (`analyzePage`/`buildSheet`). The page is decoded and downscaled to a 1000 px-wide grayscale image, then analyzed:
-   - **LAG remito form (v8.5, mode `fila`; v8.6 handles phone photos).** It has a CANTIDAD column and a DETALLE column with the 18 products pre-printed in `Lectura.FILAS_REMITO` order, followed by one blank row: 19 body rows in total. `Lectura.findTable` handles this case. It is built for hand-held phone photos: tilted up to about 4°, in perspective, and wrinkled so that row lines curve near the paper edge.
-     1. It finds the CANTIDAD/DETALLE separator among the long vertical lines (`verticalLines`), searching tilts up to ±0.07. The score is a dense-segment (Kadane) run, so glare gaps are bridged but chains of letters are not. The chosen line is the first candidate that has the table's left border (`leftBorder`, which has its own tilt) to its left; this avoids picking the page edge.
-     2. It builds the horizontal-line profile only in a DETALLE band next to the separator, with its own tilt search. Peaks must continue across CANTIDAD (`leftTrace`).
-     3. It anchors on the solid table bottom and estimates the row height from the autocorrelation of the profile. Perspective is fitted as line k = B − u·k − c·k².
-     4. It snaps the 19-row grid to the peaks. It rejects other forms unless at least 13 boundaries snap, few lines fall off-grid, and the separator length is 0.85–1.25 × the grid height (this catches half-row grids on other tables).
-     5. Each boundary is traced inside CANTIDAD with its own slope. Each row gets a tilted `cell` `{cx, cy, wd, ht, ang}` in analysis-image pixels (`t.size`).
+- **In memory:** `work = { oc, n, rows: [{nombre, cat, cant[]}] }`.
+  - `n` is the number of remitos (photos), which is also the number of columns.
+  - Catalog rows come first (from the settings catalog). Then come extra rows, which have an editable name and a remove button.
+- **Sticky parts:** the header, the N°/Producto columns and the Total column stay fixed while the grid scrolls.
+- **Keyboard (Excel-like):**
+  - Enter moves down. At the bottom of a column it wraps to the top of the next remito.
+  - Shift+Enter moves up. Arrows move between cells (←/→ only when the caret is at the edge or everything is selected).
+  - F2 edits in place, and Esc reverts the cell. Focusing a cell selects its content (fine pointers only).
+- **Paste:** a pasted TSV block (copied from Excel) fills the grid from the focused cell.
+- **Copiar:** copies a TSV with `Producto` plus one column per remito, and no total. That is the format Facturación's "Entregas" paste box expects (`OcParse.parsePasted` sums every number in a row, so a total column would double-count).
+- **Photo link:** focusing a cell in column c shows photo c in the viewer (`show(c)` → `markCol`).
+- **Autosave:** each edit runs `scheduleSave()`, a 1.2 s debounce, then `flushSave()`.
+  - `flushSave` runs `S.update(cur, { tabla, periodo, estado })` and serializes the saves.
+  - Saves are flushed on close, on `visibilitychange`, and before "Guardar PDF". There is no "Guardar tabla" button.
+- **Cells:** each cell takes a number or a sum (`parseQty`: `12`, `12,5`, `1.250`, `120+35`). Invalid cells turn red, the total shows `?`, and "Guardar PDF" refuses to continue.
+- **"Guardar PDF" (`sendCurrent`):**
+  1. Validate the cells and flush the autosave.
+  2. Call `A.makePdf(fotos, name, oc, per, rows, n)`, then `A.sendToBridge`.
+  3. Mark the lote `enviado`.
+  4. Dispatch `document` event `lag:recepcion` with `recepcionOf(lote)` = `{ id, oc, periodo, estado, enviado, archivo, remitos, filas: [{nombre, cant: [number|null], total}] }`.
 
-     `Lectura.cellInk` measures ink in the cell's middle band, skipping the left fifth where binder holes show. Only cells with ink are cropped. `lotes.js` draws each crop rotated, so the row comes out straight. People write sitting on the lower line, so the crop gets extra bottom padding. Each crop is labelled `Fnn =`, and row k maps to product k.
-   - **Any other table (mode `renglon`).** `Lectura.findRows` produces full-width rows labelled `Rnn =`, and the product is matched by description.
-   - **No table found.** The whole page is added as `HOJA n COMPLETA`.
+  Without a bridge on the device, it offers to download the PDF instead.
+- **PDF table** (`pdf.js` `layoutTable`): columns Producto | Rem. 1 … | Total.
+  - It goes landscape from 5 remitos.
+  - With more than 14 remitos it falls back to totals only.
 
-   It has been tested against 15 real CamScanner remito photos, 75 deformed variants of them (rotated, perspective, curved), and one hand-held phone photo. None of these are in the repo. Real phone photos of remitos are in the owner's Google Drive (see "Test data" above).
-2. It shares that image via `navigator.share({ files })` with only files, so the Shortcut receives a pure image input.
-3. "Pegar lectura" calls `navigator.clipboard.readText()`, with a textarea fallback.
-4. `Lectura.parse` handles labels split across lines, fixes confusable characters (`l2O` → 120) and skips "OC ####" notes.
-   - Live Text may output every label first and every number after (`F01 =`, `F15 =`, `5,28`, `22`). On `fila` pages, loose numbers fill the empty labels in order.
-   - If empty labels remain at the end of the page, the readings assigned by order are flagged `dudoso`. Flagged readings are not auto-applied and are highlighted until the user edits them or applies them manually.
-5. `Lectura.match` fuzzy-matches each description to the catalog. Learned aliases are stored in localStorage `lecturaAlias`.
-6. The sums go into the table as `a+b`. The reading is saved in `tabla.leido = { fecha, filas: [{h, r, q, d, p}], aplicados }`, so no rules change was needed. Applied inputs get the `.leido` highlight.
-
-This is gated to iOS with Web Share file support (`LEC_OK`). On other devices only the saved reading is shown, for review. After "Guardar PDF", `Lotes.offerReading` asks to read right away; the `settings.lecturaPreguntar` setting turns that off. In tests, mock `navigator.share`/`canShare`/`clipboard` and use the iPhone device profile.
+The iPhone Shortcut / Live Text quantity reader (v8.4–8.7: `lectura.js`, the "hoja de lectura", `tabla.leido`, `settings.lecturaPreguntar`, localStorage `lecturaAlias`) was removed in v8.8 at the owner's request, because it only read the first photo. It is in git history before the v8.8 commit. `scanner.js` `loadSettings` deletes the leftover keys.
 
 ### Persistence
 
 All app data is per device in `localStorage`. The main keys are:
 
-- `settings`, which includes `bridgeUrl`, `bridgeKey`, `catalog`, `periodMode` and `filterMode`. It is per device, so the bridge must be configured on every device that sends.
+- `settings`, which includes `bridgeUrl`, `bridgeKey`, `catalog`, `periodMode`, `filterMode` and `oc` (the OC typed in the scanner; it is cleared after "Guardar remitos"). It is per device, so the bridge must be configured on every device that sends.
 - `ocData`, `ocAliases`, `ocClientAliases`, `facCache`.
 
 Server-side data is the user accounts plus each user's lotes (see above and below).

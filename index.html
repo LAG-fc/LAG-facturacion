@@ -201,7 +201,7 @@
           </div>
         </div>
 
-        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v8.7</span></p>
+        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v8.8</span></p>
       </section>
     </div>
   </div>
@@ -217,7 +217,7 @@
     <div class="top-actions">
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg><span class="hide-sm">Instalar</span></button>
       <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v8.7</span>
+      <span class="ver" id="verTag">v8.8</span>
       <div class="user-menu" id="userMenu" hidden>
         <button type="button" class="user-btn" id="userBtn" aria-haspopup="true" aria-expanded="false" aria-controls="userPop" title="Tu cuenta">
           <span class="avatar" id="userAvatar">·</span><span class="user-first hide-sm" id="userFirst"></span><svg class="i chev"><use href="#i-chevron"/></svg>
@@ -250,7 +250,7 @@
       <div class="lotes-empty" id="lotesEmpty" hidden>
         <svg class="i big"><use href="#i-file"/></svg>
         <p>Todavía no hay PDF guardados.</p>
-        <small>Sacá las fotos de los remitos y tocá “Guardar PDF”. Después cargás la tabla de recepciones desde este u otro dispositivo.</small>
+        <small>Elegí la OC, sacá las fotos de los remitos y tocá “Guardar remitos”. Después cargás la tabla de recepciones desde la computadora.</small>
       </div>
       <details class="lotes-sent" id="lotesSent" hidden>
         <summary>Enviados <span class="cnt" id="lotesSentN"></span></summary>
@@ -261,12 +261,16 @@
 
     <section class="card scan">
       <div class="period-bar">
+        <label class="scan-oc" id="scanOcWrap"><span>OC</span>
+          <input id="scanOc" type="text" inputmode="numeric" pattern="[0-9]*" list="ocSuggest" autocomplete="off" spellcheck="false" placeholder="N° de OC" maxlength="12" aria-label="Número de la orden de compra (OC)">
+        </label>
         <div class="seg" id="periodSeg" role="radiogroup" aria-label="Tipo de período">
           <button type="button" role="radio" class="seg-btn" data-mode="semanal" aria-checked="true">Semanal</button>
           <button type="button" role="radio" class="seg-btn" data-mode="quincenal" aria-checked="false">Quincenal</button>
         </div>
         <div class="period-info"><span class="period-lab">Remitos del</span> <b id="periodText">—</b> <small id="periodSub"></small></div>
       </div>
+      <datalist id="ocSuggest"></datalist>
       <div class="scan-toolbar">
         <label class="field-inline">Cámara
           <select id="cameraSelect"></select>
@@ -311,8 +315,8 @@
         <small>Apuntá la cámara a la hoja y tocá “Sacar foto”, o arrastrá las fotos hasta acá.</small>
       </div>
       <div class="pages-footer">
-        <p class="save-hint" id="saveHint">Al guardar, el PDF queda en “PDF guardados”. La tabla de recepciones se completa después, desde este u otro dispositivo.</p>
-        <button id="saveBtn" class="btn primary big wide" disabled><svg class="i"><use href="#i-download"/></svg><span id="saveLabel">Guardar PDF</span></button>
+        <p class="save-hint" id="saveHint">Elegí la OC arriba antes de escanear. Al guardar, los remitos quedan en “PDF guardados”: después cargás la tabla de recepciones desde la computadora y tocás “Guardar PDF”.</p>
+        <button id="saveBtn" class="btn primary big wide" disabled><svg class="i"><use href="#i-download"/></svg><span id="saveLabel">Guardar remitos</span></button>
       </div>
     </aside>
   </main>
@@ -507,83 +511,40 @@
         <div class="lv-strip" id="lvStrip"></div>
       </section>
       <form class="lot-form" id="lotForm" novalidate>
-        <section class="lec" id="lecBox" hidden aria-label="Lectura de cantidades con el iPhone">
-          <div class="lec-head">
-            <strong><svg class="i"><use href="#i-scan"/></svg>Cantidades con el iPhone</strong>
-            <button type="button" id="lecHelp" class="link-btn tiny">¿Cómo se configura?</button>
-          </div>
-          <div class="lec-tools" id="lecTools">
-            <button type="button" id="lecShare" class="btn primary" disabled><svg class="i"><use href="#i-scan"/></svg>Preparando…</button>
-            <button type="button" id="lecPaste" class="btn soft"><svg class="i"><use href="#i-copy"/></svg>Pegar lectura</button>
-          </div>
-          <textarea id="lecText" class="lec-text" rows="3" hidden placeholder="Mantené apretado acá y tocá «Pegar»"></textarea>
-          <p class="hint lec-msg" id="lecMsg" role="status"></p>
-          <details class="lec-det" id="lecDet" hidden>
-            <summary class="lec-summary" id="lecSummary"></summary>
-            <div class="lec-rows" id="lecRows"></div>
-            <div class="lec-foot" id="lecFoot">
-              <button type="button" id="lecClear" class="link-btn tiny danger-text">Descartar lectura</button>
-              <button type="button" id="lecApply" class="btn soft small"><svg class="i"><use href="#i-check"/></svg>Pasar a la tabla</button>
+        <div class="lot-top">
+          <label class="field lot-oc">Orden de compra (OC)
+            <input id="lotOc" type="text" inputmode="numeric" pattern="[0-9]*" list="ocSuggest" autocomplete="off" spellcheck="false" placeholder="Ej.: 93035" maxlength="12">
+          </label>
+          <div class="lot-period">
+            <div class="seg" id="lotPeriodSeg" role="radiogroup" aria-label="Tipo de período">
+              <button type="button" role="radio" class="seg-btn" data-mode="semanal" aria-checked="true">Semanal</button>
+              <button type="button" role="radio" class="seg-btn" data-mode="quincenal" aria-checked="false">Quincenal</button>
             </div>
-          </details>
-        </section>
-        <label class="field lot-oc">Orden de compra (OC)
-          <input id="lotOc" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" spellcheck="false" placeholder="Ej.: 93035" maxlength="12">
-          <small class="hint">Archivo: <b id="lotFile">REMITOS_…</b>.pdf</small>
-        </label>
-        <div class="lot-period">
-          <div class="seg" id="lotPeriodSeg" role="radiogroup" aria-label="Tipo de período">
-            <button type="button" role="radio" class="seg-btn" data-mode="semanal" aria-checked="true">Semanal</button>
-            <button type="button" role="radio" class="seg-btn" data-mode="quincenal" aria-checked="false">Quincenal</button>
+            <span class="period-info">Remitos del <b id="lotPeriodText">—</b> <small id="lotPeriodSub"></small></span>
           </div>
-          <span class="period-info">Remitos del <b id="lotPeriodText">—</b> <small id="lotPeriodSub"></small></span>
         </div>
-        <div class="tt-head"><span>N°</span><span>Producto</span><span>Cantidad total</span></div>
-        <div id="lotRows" class="tt-rows"></div>
-        <div class="tt-tools">
-          <button type="button" id="lotAddExtra" class="btn ghost small"><svg class="i"><use href="#i-plus"/></svg>Agregar otro producto</button>
-          <span class="hint">Podés escribir sumas: <b>120+35,5</b></span>
+        <p class="hint lot-file">Archivo: <b id="lotFile">REMITOS_…</b>.pdf</p>
+        <div class="xl-bar">
+          <strong class="xl-title"><svg class="i"><use href="#i-list"/></svg>Tabla de recepciones</strong>
+          <span class="xl-saved" id="lotSaved" role="status"></span>
+          <div class="xl-tools">
+            <button type="button" id="lotAddExtra" class="btn ghost small"><svg class="i"><use href="#i-plus"/></svg>Producto</button>
+            <button type="button" id="lotCopy" class="btn ghost small" title="Copiar la tabla para pegarla en Excel"><svg class="i"><use href="#i-copy"/></svg>Copiar</button>
+          </div>
         </div>
+        <div class="xl-wrap" id="lotGridWrap"><table class="xl" id="lotGrid" aria-label="Tabla de recepciones: un renglón por producto y una columna por remito"></table></div>
+        <p class="hint xl-help">Una columna por remito: al pasar a una columna se muestra la foto de ese remito. <b>Enter</b> baja, <b>Tab</b> y las <b>flechas</b> te mueven, <b>Esc</b> deshace la celda. Podés pegar celdas copiadas de Excel y escribir sumas (<b>120+35,5</b>). Los cambios se guardan solos.</p>
         <p id="lotErr" class="err" role="alert"></p>
         <p class="hint lot-dest" id="lotDest"></p>
       </form>
     </div>
     <div class="lot-foot">
-      <button type="button" id="lotDelete" class="btn ghost small danger-text" title="Borrar este PDF guardado"><svg class="i"><use href="#i-trash"/></svg><span class="hide-sm">Borrar</span></button>
+      <button type="button" id="lotDelete" class="btn ghost small danger-text" title="Borrar estos remitos guardados"><svg class="i"><use href="#i-trash"/></svg><span class="hide-sm">Borrar</span></button>
       <div class="lot-foot-btns">
-        <button type="button" id="lotDownload" class="btn secondary"><svg class="i"><use href="#i-download"/></svg><span><span class="hide-sm">Descargar </span>PDF</span></button>
-        <button type="button" id="lotSave" class="btn soft"><svg class="i"><use href="#i-check"/></svg><span>Guardar<span class="hide-sm"> tabla</span></span></button>
-        <button type="button" id="lotSend" class="btn primary"><svg class="i"><use href="#i-send"/></svg>Enviar al borrador de Gmail</button>
+        <button type="button" id="lotDownload" class="btn secondary" title="Descargar el PDF en este dispositivo, sin enviarlo"><svg class="i"><use href="#i-download"/></svg><span>Descargar<span class="hide-sm"> PDF</span></span></button>
+        <button type="button" id="lotSend" class="btn primary" title="Guarda el PDF (remitos + tabla) en Drive y deja el borrador en Gmail"><svg class="i"><use href="#i-send"/></svg>Guardar PDF</button>
       </div>
     </div>
-  </dialog>
-
-  <!-- Cómo crear el Atajo del iPhone -->
-  <dialog id="lecHelpDialog" class="dlg help-dlg" aria-labelledby="lecHelpTitle">
-    <div class="help-head">
-      <h3 id="lecHelpTitle">Atajo «LAG Cantidades» (una sola vez)</h3>
-      <button type="button" id="lecHelpClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
-    </div>
-    <p class="hint">El iPhone lee muy bien la letra a mano, pero una página web no puede usar ese lector directamente. Este Atajo hace de puente: la página le pasa una hoja armada con <b>solo la columna CANTIDAD</b> de cada remito y el <b>número de fila</b> (F01 = Pan mignon blanco, F02 = Pan mignon de salvado… en el orden impreso del remito); el Atajo la lee y copia el texto. Se crea una sola vez, en el iPhone, y es gratis.</p>
-    <ol class="help-steps">
-      <li>Abrí la app <b>Atajos</b> (viene con el iPhone; si la borraste, bajala gratis del App Store).</li>
-      <li>Tocá <b>+</b> (arriba a la derecha) para crear un atajo nuevo.</li>
-      <li>Tocá el nombre de arriba (<i>Nuevo atajo</i>), elegí <b>Renombrar</b> y escribí exactamente <b>LAG Cantidades</b>.</li>
-      <li>Tocá <b>Buscar acciones</b>, escribí <b>texto</b> y elegí <b>Extraer texto de la imagen</b> (en inglés: <i>Extract Text from Image</i>).</li>
-      <li>Dentro de esa acción tocá la palabra azul <b>Imagen</b> y elegí <b>Entrada del atajo</b>.</li>
-      <li>Arriba aparece <i>Recibir … de <b>Ninguna parte</b></i>: tocá <b>Ninguna parte</b> y activá <b>Hoja para compartir</b>. Después tocá el tipo de entrada y dejá marcado solo <b>Imágenes</b>.<br><small>En algunas versiones esto está en el botón <b>ⓘ</b> → <b>Mostrar en hoja para compartir</b>.</small></li>
-      <li>Tocá otra vez <b>Buscar acciones</b>, escribí <b>portapapeles</b> y elegí <b>Copiar al portapapeles</b> (<i>Copy to Clipboard</i>). Tiene que quedar copiando el <b>Texto</b> del paso anterior.</li>
-      <li>Tocá <b>OK</b>. Listo.</li>
-    </ol>
-    <p class="help-sub">Cómo se usa</p>
-    <ol class="help-steps">
-      <li>Abrí un PDF guardado (o tocá <b>Leer ahora</b> después de “Guardar PDF”) y tocá <b>Leer cantidades</b>. Usalo siempre desde la página: si corrés el Atajo desde Fotos, lee el remito entero (con direcciones, CUIT, anotaciones…).</li>
-      <li>En la hoja para compartir elegí <b>LAG Cantidades</b>. Si no aparece, deslizá la fila de íconos hasta el final → <b>Editar acciones</b> y agregalo a Favoritos. La primera vez puede pedir permiso: elegí <b>Permitir siempre</b>.</li>
-      <li>Cuando se cierre, tocá <b>Pegar lectura</b> y después <b>Pegar</b> en el globito del iPhone.</li>
-      <li>Cada cantidad se asigna al producto de su fila y se suma con la de los otros remitos (por ejemplo 492,18+509,28). Pasan solas a la tabla (resaltadas en amarillo) y se guardan en tu cuenta: revisalas con las fotos, acá o en la computadora. Si el iPhone no pudo leer alguna fila, no se pasa nada solo: las filas dudosas quedan marcadas para que las mires con la foto.</li>
-      <li>Para la foto: que se vea toda la tabla (con la columna <b>CANTIDAD</b> completa) y la hoja lo más plana posible. Puede estar un poco torcida o arrugada.</li>
-    </ol>
-    <div class="dialog-actions"><button type="button" id="lecHelpOk" class="btn primary">Entendido</button></div>
   </dialog>
 
   <!-- Administración de usuarios (solo administradores) -->
@@ -634,16 +595,10 @@
         <button type="button" id="bridgeTest" class="btn ghost small">Probar conexión</button>
         <span id="bridgeMsg" class="bridge-msg" role="status"></span>
       </div>
-      <p class="hint">Con el puente configurado, “Enviar al borrador de Gmail” (en cada PDF guardado) lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto. Se configura en cada dispositivo desde el que quieras enviar. Sin puente, el PDF se descarga.</p>
-    </fieldset>
-    <fieldset class="bridge">
-      <legend>Cantidades con el iPhone</legend>
-      <label class="switch field-switch"><input type="checkbox" id="lecturaChk"><span class="slider"></span><span class="switch-text">Después de “Guardar PDF”, preguntar si leo las cantidades (solo iPhone)</span></label>
-      <div class="row-inline"><button type="button" id="lecHelpSettings" class="btn ghost small">Cómo crear el Atajo «LAG Cantidades»</button></div>
-      <p class="hint">Usa el reconocimiento de letra del iPhone (el mismo de “Texto en vivo”) a través de un Atajo. Las cantidades leídas pasan a la tabla de recepciones para revisarlas.</p>
+      <p class="hint">Con el puente configurado, “Guardar PDF” (en cada PDF guardado) lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto (remitos + tabla de recepciones). Se configura en cada dispositivo desde el que quieras guardar el PDF. Sin puente, el PDF se descarga.</p>
     </fieldset>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">8.7</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">8.8</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
@@ -665,7 +620,6 @@
   <script src="despachos.js"></script>
   <script src="pdf.js"></script>
   <script src="scanner.js"></script>
-  <script src="lectura.js"></script>
   <script src="lotes-store.js"></script>
   <script src="lotes.js"></script>
   <script src="oc.js"></script>

@@ -1,13 +1,14 @@
-// lotes.js — "PDF guardados" (v8.3).
-// Cada vez que se toca "Guardar PDF", las fotos escaneadas quedan como un lote en la lista lateral (en la cuenta del
-// usuario: se ve desde el celular y desde la computadora). Al abrir un lote se ven las fotos de los remitos junto a la
-// tabla de recepciones; cuando la tabla está completa (OC y cantidades), aparece la opción de enviarlo al borrador
-// de Gmail (puente de Google). El almacenamiento está en lotes-store.js.
-// v8.4: en el iPhone, "Leer cantidades" arma una hoja con los renglones de los remitos (lectura.js), la comparte con el
-// Atajo "LAG Cantidades" (que usa el reconocimiento de texto del iPhone) y pasa a la tabla lo que el Atajo copió.
+// lotes.js — "PDF guardados" (v8.3; v8.8: tabla de recepciones tipo planilla de Excel).
+// Cada vez que se toca "Guardar remitos" en el escáner, las fotos quedan como un lote en la lista lateral (en la cuenta
+// del usuario: se ve desde el celular y desde la computadora), con la OC que se eligió antes de escanear.
+// Al abrir un lote se ven las fotos de los remitos junto a la tabla de recepciones: una planilla como la de Excel, con
+// un renglón por producto, una columna por remito y el total de cada producto. Lo que se escribe se guarda solo.
+// "Guardar PDF" arma el PDF (remitos + tabla), lo sube a Drive y deja el borrador en Gmail (puente de Google).
+// La tabla queda asociada a la OC del lote (Lotes.recepciones y el evento "lag:recepcion", para Facturación).
+// El almacenamiento está en lotes-store.js.
 (() => {
   "use strict";
-  const A = window.RemitosApp, S = window.LotesStore, P = window.Period, L = window.Lectura, $ = (id) => document.getElementById(id);
+  const A = window.RemitosApp, S = window.LotesStore, P = window.Period, $ = (id) => document.getElementById(id);
   if (!A || !S || !P) { console.warn("PDF guardados: faltan archivos (scanner.js, lotes-store.js o period.js)."); return; }
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const ICON = (n) => '<svg class="i"><use href="#i-' + n + '"/></svg>';
@@ -15,7 +16,8 @@
   const fmtDay = (ms) => { const d = new Date(ms); return pad(d.getDate()) + "/" + pad(d.getMonth() + 1); };
   const fmtTime = (ms) => { const d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
   const fmtMB = (b) => { const m = (b || 0) / 1048576; return (m >= 100 ? Math.round(m) : m.toFixed(1)).toString().replace(".", ",") + " MB"; };
-  const hojas = (n) => n + (n === 1 ? " hoja" : " hojas");
+  const hojas = (n) => n + (n === 1 ? " remito" : " remitos");
+  const finePointer = () => !!(window.matchMedia && matchMedia("(pointer: fine)").matches);
 
   // ---------------------------------------------------------------- cantidades
   // Un número: acepta 12 · 12,5 · 12.5 · 1.250 (mil doscientos cincuenta) · 1.250,5
@@ -38,7 +40,7 @@
   }
   // Una cantidad o una suma de cantidades ("120+35,5")
   function parseQty(text) {
-    const t = String(text || "").trim();
+    const t = String(text == null ? "" : text).trim();
     if (!t) return { empty: true };
     let sum = 0;
     const parts = t.split("+");
@@ -53,14 +55,15 @@
 
   // ---------------------------------------------------------------- estado de cada lote
   const isSent = (it) => it.estado === "enviado";
+  const ocOf = (it) => P.cleanOc((it.tabla && it.tabla.oc) || "");
   function stateOf(it) {
     const up = S.uploadingInfo(it.id);
     if (up) return { k: "subiendo", cls: "info", text: up.total ? "Subiendo " + up.done + " de " + up.total + "…" : "Subiendo…" };
     if (it.where === "local" && it.pendiente) return { k: "sin-subir", cls: "warn", text: "Sin subir · está solo en este dispositivo" };
     if (it.where === "cloud" && !it.subido) return { k: "incompleto", cls: "warn", text: "Subida sin terminar (desde otro dispositivo)" };
-    if (it.estado === "lista") return { k: "lista", cls: "ok", text: "Lista para enviar" };
-    if (it.estado === "enviado") return { k: "enviado", cls: "", text: "Enviado el " + fmtDay(it.enviado) + " " + fmtTime(it.enviado) };
-    return { k: "pendiente", cls: "warn", text: "Falta la tabla de recepciones" };
+    if (it.estado === "lista") return { k: "lista", cls: "ok", text: "Tabla completa · falta «Guardar PDF»" };
+    if (it.estado === "enviado") return { k: "enviado", cls: "", text: "PDF enviado el " + fmtDay(it.enviado) + " " + fmtTime(it.enviado) };
+    return { k: "pendiente", cls: "warn", text: ocOf(it) ? "Falta la tabla de recepciones" : "Falta la OC y la tabla de recepciones" };
   }
   const periodOf = (it, mode) => P.forDate(mode || (it.periodo && it.periodo.mode === "quincenal" ? "quincenal" : "semanal"), new Date(it.creado));
   const titleOf = (it) => { const oc = it.tabla && it.tabla.oc; return (oc ? "OC " + oc + " · " : "Remitos del ") + P.dateRange(it.periodo || periodOf(it)); };
@@ -77,7 +80,7 @@
     catch (e) { console.error(e); listError = e.message || String(e); }
     finally { loading = false; lastLoad = Date.now(); refreshBtn.classList.remove("spin"); }
     render();
-    if (again) { again = false; refresh(); }
+    if (again) { again = false; await refresh(); }
   }
 
   function render() {
@@ -96,7 +99,19 @@
     $("lotesEmpty").hidden = active.length > 0;
     $("lotesSent").hidden = sent.length === 0;
     $("lotesSentN").textContent = "(" + sent.length + ")";
-    if (cur) { const fresh = items.find((x) => x.id === cur.id); if (fresh && fresh !== cur && !dirty()) { cur = fresh; fillHead(); } }
+    fillOcSuggest();
+    if (cur) { const fresh = items.find((x) => x.id === cur.id); if (fresh && fresh !== cur && !dirty() && !saving) { cur = fresh; fillHead(); } }
+  }
+
+  // Sugerencias para el número de OC (escáner y tabla): las de los PDF guardados y las cargadas en Facturación.
+  function fillOcSuggest() {
+    const dl = $("ocSuggest");
+    if (!dl) return;
+    const seen = new Set(), list = [];
+    const add = (oc, label) => { oc = P.cleanOc(oc); if (!oc || seen.has(oc)) return; seen.add(oc); list.push('<option value="' + esc(oc) + '">' + esc(label) + "</option>"); };
+    items.forEach((it) => add(ocOf(it), "Remitos del " + P.dateRange(it.periodo || periodOf(it))));
+    try { const o = JSON.parse(localStorage.getItem("ocData") || "[]"); if (Array.isArray(o)) o.forEach((r) => r && add(r.oc, "OC de Facturación")); } catch (e) { /* nada */ }
+    dl.innerHTML = list.slice(0, 60).join("");
   }
 
   function card(it) {
@@ -110,7 +125,7 @@
         '<span class="chip ' + st.cls + '">' + esc(st.text) + "</span></span>" +
       "</button>";
     el.querySelector(".lote-open").addEventListener("click", () => openLote(it));
-    if (st.k === "lista") el.appendChild(actBtn("primary", "send", "Enviar", "Enviar al borrador de Gmail", () => openLote(it, { send: true })));
+    if (st.k === "lista") el.appendChild(actBtn("primary", "send", "Guardar PDF", "Guardar el PDF y mandarlo al borrador de Gmail", () => openLote(it, { send: true })));
     if (st.k === "pendiente") el.appendChild(actBtn("soft", "list", "Tabla", "Cargar la tabla de recepciones", () => openLote(it)));
     if (st.k === "sin-subir" && S.mode() === "cloud") el.appendChild(actBtn("soft", "upload", "Subir", "Subir a tu cuenta", () => uploadNow(it)));
     return el;
@@ -130,37 +145,65 @@
 
   refreshBtn.addEventListener("click", () => { S.retryUploads(); refresh(); });
   S.onChange(() => { if (!loading) render(); });
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && unlocked && Date.now() - lastLoad > 15000 && !dlg.open) refresh(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { if (cur) flushSave(); return; }
+    if (unlocked && Date.now() - lastLoad > 15000 && !dlg.open) refresh();
+  });
   window.addEventListener("online", () => setTimeout(refresh, 1500));
 
   // ---------------------------------------------------------------- un lote: fotos + tabla de recepciones
-  const dlg = $("lotDialog"), rowsEl = $("lotRows"), errEl = $("lotErr"), ocEl = $("lotOc");
+  const dlg = $("lotDialog"), grid = $("lotGrid"), gridWrap = $("lotGridWrap"), errEl = $("lotErr"), ocEl = $("lotOc"), savedEl = $("lotSaved");
   const stage = $("lvStage"), img = $("lvImg"), lvMsg = $("lvMsg"), strip = $("lvStrip");
   let cur = null, work = null, orig = "", mode = "semanal", busy = false;
   let shots = null, urls = [], idx = 0, loadSeq = 0;
   const cache = new Map();                          // id -> fotos ya bajadas (los últimos 2 lotes abiertos)
 
-  // Copia editable de la tabla del lote. Lo que no esté en la lista de productos de este dispositivo pasa a "otros".
+  // La tabla en memoria: work = {oc, n (remitos = columnas), rows: [{nombre, cat (está en la lista de productos), cant: [texto por remito]}]}
+  // Se guarda en el lote como tabla = {oc, remitos, filas: [{nombre, cant}], valores: [{nombre, texto (total)}], extras: []}.
+  // "valores" lleva el total de cada producto (así lo leían las versiones anteriores).
+  const blank = (n) => Array.from({ length: n }, () => "");
   function toWork(it) {
-    const t = it.tabla || {}, cat = new Set(A.catalog());
-    const values = {}, extras = [];
-    (Array.isArray(t.valores) ? t.valores : []).forEach((v) => {
-      if (!v || !v.nombre) return;
-      if (cat.has(v.nombre)) values[v.nombre] = String(v.texto || "");
-      else extras.push({ nombre: String(v.nombre), texto: String(v.texto || "") });
-    });
-    (Array.isArray(t.extras) ? t.extras : []).forEach((x) => { if (x) extras.push({ nombre: String(x.nombre || ""), texto: String(x.texto || "") }); });
-    const le = t.leido && Array.isArray(t.leido.filas) ? t.leido : null;
-    const leido = le ? { fecha: le.fecha || 0, filas: le.filas.map((f) => ({ h: f.h || 0, r: f.r == null ? null : f.r, q: String(f.q || ""), d: String(f.d || ""), p: String(f.p || "") })), aplicados: Array.isArray(le.aplicados) ? le.aplicados.slice() : [] } : null;
-    return { oc: P.cleanOc(t.oc || ""), values, extras, leido };
+    const t = it.tabla || {};
+    const n = Math.max(1, Math.min(300, (it.paginas | 0) || (t.remitos | 0) || 1));
+    const rows = A.catalog().map((nombre) => ({ nombre, cat: true, cant: blank(n) }));
+    const byName = new Map(rows.map((r) => [r.nombre, r]));
+    const put = (nombre, cant) => {
+      nombre = String(nombre == null ? "" : nombre).trim();
+      let r = nombre ? byName.get(nombre) : null;
+      if (!r) { r = { nombre, cat: false, cant: blank(n) }; rows.push(r); if (nombre) byName.set(nombre, r); }
+      cant.forEach((v, i) => { v = String(v == null ? "" : v).trim(); if (v && i < n) r.cant[i] = r.cant[i] ? r.cant[i] + "+" + v : v; });
+    };
+    if (Array.isArray(t.filas)) t.filas.forEach((f) => { if (f) put(f.nombre, Array.isArray(f.cant) ? f.cant : []); });
+    else {                                           // lotes anteriores a la v8.8: un total por producto (va al remito 1)
+      (Array.isArray(t.valores) ? t.valores : []).forEach((v) => { if (v && v.nombre) put(v.nombre, [v.texto]); });
+      (Array.isArray(t.extras) ? t.extras : []).forEach((x) => { if (x && (x.nombre || x.texto)) put(x.nombre, [x.texto]); });
+    }
+    return { oc: P.cleanOc(t.oc || ""), n, rows };
+  }
+  const rowUsed = (r) => r.cant.some((v) => String(v).trim() !== "");
+  function rowTotal(r) {
+    let sum = 0, has = false;
+    const bad = [];
+    r.cant.forEach((v, i) => { const q = parseQty(v); if (q.empty) return; if (!q.ok) { bad.push(i); return; } has = true; sum += q.value; });
+    return { has, bad, value: Math.round(sum * 1000) / 1000 };
   }
   function fromWork() {
-    const valores = A.catalog().filter((n) => String(work.values[n] || "").trim()).map((n) => ({ nombre: n, texto: String(work.values[n]).trim() }));
-    const extras = work.extras.filter((x) => String(x.nombre || "").trim() || String(x.texto || "").trim()).map((x) => ({ nombre: String(x.nombre || "").trim(), texto: String(x.texto || "").trim() }));
-    const out = { oc: work.oc, valores, extras };
-    if (work.leido) out.leido = { fecha: work.leido.fecha, filas: work.leido.filas.map((f) => ({ h: f.h, r: f.r, q: f.q, d: f.d, p: f.p })), aplicados: work.leido.aplicados.slice() };
-    return out;
+    const filas = [], valores = [];
+    work.rows.forEach((r) => {
+      const nombre = String(r.nombre || "").trim();
+      if (!rowUsed(r) && (r.cat || !nombre)) return;
+      filas.push({ nombre, cant: r.cant.map((v) => String(v).trim()) });
+      const t = rowTotal(r);
+      if (nombre && t.has && !t.bad.length) valores.push({ nombre, texto: formatQty(t.value) });
+    });
+    return { oc: work.oc, remitos: work.n, filas, valores, extras: [] };
   }
+  function issues() {
+    let bad = 0, noName = 0, any = 0;
+    work.rows.forEach((r) => { const t = rowTotal(r); bad += t.bad.length; if (t.has) { any++; if (!String(r.nombre).trim()) noName++; } });
+    return { bad, noName, any };
+  }
+  const newEstado = () => { const q = issues(); return work.oc && q.any && !q.bad && !q.noName ? "lista" : "pendiente"; };
   const snapshot = () => JSON.stringify({ t: fromWork(), m: mode });
   const dirty = () => !!(cur && work && snapshot() !== orig);
 
@@ -169,10 +212,49 @@
     $("lotTitle").textContent = titleOf(Object.assign({}, cur, { tabla: { oc: work.oc }, periodo: periodOf(cur, mode) }));
     $("lotSub").textContent = hojas(cur.paginas || 0) + " · guardado el " + fmtDay(cur.creado) + " a las " + fmtTime(cur.creado) +
       (cur.where === "local" ? " · en este dispositivo" : " · en tu cuenta") + (isSent(cur) && cur.carpeta ? " · Drive: " + cur.carpeta : "");
-    const chip = $("lotState"), unsaved = dirty();
-    chip.className = "lot-state chip " + (unsaved ? "info" : st.cls); chip.textContent = unsaved ? "Cambios sin guardar" : st.text;
-    $("lotSend").lastChild.textContent = isSent(cur) ? "Volver a enviar" : "Enviar al borrador de Gmail";
+    const chip = $("lotState");
+    chip.className = "lot-state chip " + st.cls; chip.textContent = st.text;
+    $("lotSend").lastChild.textContent = isSent(cur) ? "Guardar PDF otra vez" : "Guardar PDF";
+    renderSaved();
   }
+
+  // ---------------------------------------------------------------- guardado automático de la tabla
+  let saveTimer = 0, saving = null, saveErr = "";
+  function renderSaved() {
+    if (!cur) return;
+    const pend = !!saveTimer || dirty();
+    savedEl.className = "xl-saved" + (saveErr ? " bad" : saving ? " busy" : pend ? " busy" : " ok");
+    savedEl.textContent = saveErr ? "No se pudo guardar (" + saveErr + "). Se vuelve a intentar con el próximo cambio."
+      : saving ? "Guardando…" : pend ? "Cambios sin guardar…"
+      : cur.where === "local" ? "✓ Guardado en este dispositivo" : "✓ Guardado en tu cuenta";
+  }
+  function scheduleSave(ms) {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { saveTimer = 0; flushSave(); }, ms == null ? 1200 : ms);
+    renderSaved();
+  }
+  // Guarda la tabla y el período si hay cambios. Devuelve true si quedó todo guardado.
+  async function flushSave() {
+    clearTimeout(saveTimer); saveTimer = 0;
+    while (saving) await saving;
+    if (!cur || !work) return true;
+    if (!dirty()) { renderSaved(); return true; }
+    const it = cur, snap = snapshot(), tabla = fromWork(), periodo = periodOf(it, mode), estado = newEstado();
+    saving = S.update(it, { tabla, periodo, estado }).then(
+      () => { if (cur === it) orig = snap; saveErr = ""; return true; },
+      (e) => { console.error(e); saveErr = (e && e.message) || String(e); return false; });
+    renderSaved();
+    const ok = await saving;
+    saving = null;
+    render();
+    if (cur === it) { fillHead(); if (ok && dirty()) scheduleSave(); }
+    return ok;
+  }
+  window.addEventListener("beforeunload", (e) => {
+    if (cur && (saveTimer || saving || dirty())) { flushSave(); e.preventDefault(); e.returnValue = ""; }
+  });
+  function changed() { errEl.textContent = ""; errEl.className = "err"; fillHead(); scheduleSave(); }
+  function note(text, ok) { errEl.className = ok ? "note" : "err"; errEl.textContent = text; }
 
   function refreshPeriodInfo() {
     const per = periodOf(cur, mode);
@@ -181,101 +263,204 @@
     $("lotPeriodSub").textContent = "(" + per.label + ")";
     $("lotFile").textContent = fileOf(work.oc, per);
     $("lotDest").textContent = A.bridgeReady()
-      ? "Al enviar, el PDF se sube a Drive (" + P.folderPath(work.oc || "número", per) + ") y queda un borrador en Gmail."
-      : "El puente a Drive/Gmail no está configurado en este dispositivo (Ajustes). Mientras tanto podés descargar el PDF.";
+      ? "«Guardar PDF» arma el PDF (remitos + tabla), lo sube a Drive (" + P.folderPath(work.oc || "número", per) + ") y deja el borrador en Gmail."
+      : "El puente a Drive y Gmail no está configurado en este dispositivo (Ajustes): «Guardar PDF» solo puede descargarlo.";
     fillHead();
   }
   $("lotPeriodSeg").addEventListener("click", (e) => {
     const b = e.target.closest(".seg-btn");
     if (!b || !cur) return;
     mode = b.dataset.mode === "quincenal" ? "quincenal" : "semanal";
-    refreshPeriodInfo();
+    refreshPeriodInfo(); changed();
   });
   ocEl.addEventListener("input", () => {
     const c = P.cleanOc(ocEl.value);
     if (c !== ocEl.value) ocEl.value = c;
-    ocEl.classList.remove("bad"); errEl.textContent = "";
-    work.oc = c; refreshPeriodInfo();
+    ocEl.classList.remove("bad");
+    work.oc = c; refreshPeriodInfo(); changed();
+  });
+  ocEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); focusCell(0, Math.min(idx, work.n - 1)); } });
+
+  // ---------------------------------------------------------------- la planilla
+  function buildGrid() {
+    const n = work.n;
+    let h = '<colgroup><col class="c-n"><col class="c-p">' + '<col class="c-r">'.repeat(n) + '<col class="c-t"></colgroup>';
+    h += '<thead><tr><th class="xn" scope="col">N°</th><th class="xp" scope="col">Producto</th>';
+    for (let c = 0; c < n; c++) h += '<th class="xc" scope="col" data-c="' + c + '"><button type="button" class="xh" data-c="' + c + '" title="Ver la foto del remito ' + (c + 1) + '"><small>Remito</small>' + (c + 1) + "</button></th>";
+    h += '<th class="xt" scope="col">Total</th></tr></thead><tbody>';
+    work.rows.forEach((r, i) => {
+      h += "<tr" + (r.cat ? "" : ' class="extra"') + ">";
+      h += r.cat
+        ? '<td class="xn">' + (i + 1) + '</td><th class="xp" scope="row"><span>' + esc(r.nombre) + "</span></th>"
+        : '<td class="xn"><button type="button" class="xrm" data-r="' + i + '" title="Quitar este producto" aria-label="Quitar este producto">' + ICON("x") + "</button></td>" +
+          '<th class="xp" scope="row"><input type="text" class="xname" data-r="' + i + '" value="' + esc(r.nombre) + '" placeholder="Nombre del producto" autocomplete="off" spellcheck="false" maxlength="80"></th>';
+      for (let c = 0; c < n; c++) {
+        h += '<td class="xc"><input type="text" class="xq" data-r="' + i + '" data-c="' + c + '" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="40" aria-label="' +
+          esc((r.nombre || "Producto") + ", remito " + (c + 1)) + '" value="' + esc(r.cant[c]) + '"></td>';
+      }
+      h += '<td class="xt"></td></tr>';
+    });
+    h += "</tbody>";
+    grid.innerHTML = h;
+    work.rows.forEach((r, i) => paintRow(i, true));
+    markCol(idx);
+  }
+  const cellAt = (r, c) => grid.querySelector('input.xq[data-r="' + r + '"][data-c="' + c + '"]');
+  // Total del renglón y celdas mal escritas (en rojo, salvo la que se está escribiendo)
+  function paintRow(i, all) {
+    const tr = grid.tBodies[0] && grid.tBodies[0].rows[i];
+    if (!tr) return;
+    const r = work.rows[i], t = rowTotal(r);
+    tr.classList.toggle("has", t.has || t.bad.length > 0);
+    const tot = tr.cells[tr.cells.length - 1];
+    tot.textContent = t.bad.length ? "?" : t.has ? formatQty(t.value) : "";
+    tot.classList.toggle("bad", t.bad.length > 0);
+    tr.querySelectorAll("input.xq").forEach((inp) => { if (all || document.activeElement !== inp) inp.classList.toggle("bad", t.bad.includes(+inp.dataset.c)); });
+    const nm = tr.querySelector("input.xname");
+    if (nm) nm.classList.toggle("bad", t.has && !String(r.nombre).trim());
+  }
+  function markCol(c) {
+    grid.querySelectorAll(".on-col").forEach((e) => e.classList.remove("on-col"));
+    const th = grid.querySelector('th.xc[data-c="' + c + '"]');
+    if (th) th.classList.add("on-col");
+    grid.querySelectorAll('input.xq[data-c="' + c + '"]').forEach((e) => e.parentElement.classList.add("on-col"));
+  }
+  function focusCell(r, c) {
+    const el = cellAt(r, c);
+    if (!el) return;
+    el.focus({ preventScroll: true }); el.select();
+    try { el.parentElement.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) { /* nada */ }
+  }
+
+  grid.addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.classList.contains("xq")) { const r = +t.dataset.r; work.rows[r].cant[+t.dataset.c] = t.value; t.classList.remove("bad"); paintRow(r); changed(); }
+    else if (t.classList.contains("xname")) { work.rows[+t.dataset.r].nombre = t.value; paintRow(+t.dataset.r); changed(); }
+  });
+  grid.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if (!t.classList.contains("xq")) return;
+    t.dataset.orig = t.value;
+    const c = +t.dataset.c;
+    if (c !== idx) show(c);
+    grid.querySelectorAll("tr.on-row").forEach((x) => x.classList.remove("on-row"));
+    t.closest("tr").classList.add("on-row");
+    if (finePointer()) { t.select(); t.dataset.sel = "1"; }       // como en Excel: lo que se escribe reemplaza la celda
+  });
+  grid.addEventListener("mouseup", (e) => { const t = e.target; if (t.dataset && t.dataset.sel) { delete t.dataset.sel; if (t.selectionStart === t.selectionEnd) t.select(); } });
+  grid.addEventListener("focusout", (e) => {
+    const t = e.target;
+    if (!t.classList || !t.classList.contains("xq")) return;
+    delete t.dataset.sel;
+    t.classList.toggle("bad", parseQty(t.value).ok === false);
+    const tr = t.closest("tr"); if (tr) tr.classList.remove("on-row");
+  });
+  grid.addEventListener("click", (e) => {
+    const h = e.target.closest(".xh");
+    if (h) { show(+h.dataset.c); return; }
+    const rm = e.target.closest(".xrm");
+    if (rm) { work.rows.splice(+rm.dataset.r, 1); buildGrid(); changed(); }
+  });
+  // Teclado como en Excel: Enter baja (al final de la columna pasa al remito siguiente), flechas, Tab, F2 y Esc.
+  grid.addEventListener("keydown", (e) => {
+    const t = e.target;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (t.classList.contains("xname")) {
+      const r = +t.dataset.r;
+      if (e.key === "Enter" || (e.key === "ArrowRight" && t.selectionStart === t.value.length)) { e.preventDefault(); focusCell(r, 0); }
+      return;
+    }
+    if (!t.classList.contains("xq")) return;
+    const r = +t.dataset.r, c = +t.dataset.c, R = work.rows.length, C = work.n;
+    const len = t.value.length, s0 = t.selectionStart, s1 = t.selectionEnd, all = s0 === 0 && s1 === len;
+    let go = null;
+    switch (e.key) {
+      case "Enter":
+        if (e.shiftKey) go = [r - 1, c];
+        else go = r + 1 < R ? [r + 1, c] : c + 1 < C ? [0, c + 1] : [r, c];
+        break;
+      case "ArrowDown": go = [r + 1, c]; break;
+      case "ArrowUp": go = [r - 1, c]; break;
+      case "ArrowLeft": if (all || (s0 === 0 && s1 === 0)) go = [r, c - 1]; break;
+      case "ArrowRight": if (all || (s0 === len && s1 === len)) go = [r, c + 1]; break;
+      case "F2": e.preventDefault(); t.setSelectionRange(len, len); return;
+      case "Escape":
+        if (t.value !== (t.dataset.orig || "")) {
+          e.preventDefault(); e.stopPropagation();
+          t.value = t.dataset.orig || ""; t.dispatchEvent(new Event("input", { bubbles: true })); t.select();
+        }
+        return;
+      default: return;
+    }
+    if (!go) return;
+    e.preventDefault();
+    if (go[1] < 0) { const nm = grid.tBodies[0].rows[r].querySelector("input.xname"); if (nm) nm.focus(); return; }
+    if (go[0] < 0 || go[0] >= R || go[1] >= C) return;
+    focusCell(go[0], go[1]);
+  });
+  // Pegar celdas copiadas de Excel (varias filas y columnas): se llenan desde la celda elegida.
+  grid.addEventListener("paste", (e) => {
+    const t = e.target;
+    if (!t.classList.contains("xq")) return;
+    const text = e.clipboardData && e.clipboardData.getData("text/plain");
+    if (!text) return;
+    const clean = text.replace(/\r/g, "").replace(/\n+$/, "");
+    if (!/[\t\n]/.test(clean)) return;                               // un solo valor: se pega normal
+    e.preventDefault();
+    const lines = clean.split("\n").map((l) => l.split("\t"));
+    const r0 = +t.dataset.r, c0 = +t.dataset.c, R = work.rows.length, C = work.n;
+    let out = 0;
+    lines.forEach((cells, i) => cells.forEach((v, j) => {
+      const r = r0 + i, c = c0 + j;
+      if (r < R && c < C) work.rows[r].cant[c] = v.trim(); else if (v.trim()) out++;
+    }));
+    buildGrid(); changed();
+    focusCell(r0, c0);
+    if (out) note("Se pegó lo que entra en la tabla; " + out + (out === 1 ? " celda quedó afuera" : " celdas quedaron afuera") + " (más renglones o remitos de los que hay).");
   });
 
-  function calcLabel(row, input) {
-    const q = parseQty(input.value);
-    let lab = row.querySelector(".calc");
-    if (q.ok && q.isSum) {
-      if (!lab) { lab = document.createElement("div"); lab.className = "calc"; row.appendChild(lab); }
-      lab.textContent = "= " + formatQty(q.value);
-    } else if (lab) lab.remove();
-  }
-  function qtyInput(get, set) {
-    const inp = document.createElement("input");
-    inp.type = "text"; inp.className = "q"; inp.inputMode = "decimal"; inp.autocomplete = "off"; inp.placeholder = "—";
-    inp.value = get();
-    inp.addEventListener("input", () => { set(inp.value); inp.classList.remove("bad"); errEl.textContent = ""; calcLabel(inp.parentElement, inp); });
-    inp.addEventListener("blur", () => { inp.classList.toggle("bad", parseQty(inp.value).ok === false); });
-    return inp;
-  }
-  function buildRows() {
-    rowsEl.innerHTML = "";
-    A.catalog().forEach((name, i) => {
-      const row = document.createElement("div"); row.className = "tt-row";
-      const n = document.createElement("div"); n.className = "n"; n.textContent = i + 1;
-      const nm = document.createElement("div"); nm.className = "name"; nm.textContent = name;
-      const inp = qtyInput(() => work.values[name] || "", (v) => { work.values[name] = v; unmarkRead(name, inp); });
-      if (work.leido && work.leido.aplicados.includes(name)) { inp.classList.add("leido"); inp.title = "Leído con el iPhone: revisalo con la foto"; }
-      row.append(n, nm, inp); calcLabel(row, inp); rowsEl.appendChild(row);
-    });
-    work.extras.forEach((x, i) => {
-      const row = document.createElement("div"); row.className = "tt-row extra";
-      const rm = document.createElement("button"); rm.type = "button"; rm.className = "rm"; rm.title = "Quitar"; rm.innerHTML = ICON("x");
-      rm.addEventListener("click", () => { work.extras.splice(i, 1); buildRows(); });
-      const nm = document.createElement("input"); nm.type = "text"; nm.className = "name-in"; nm.placeholder = "Nombre del producto"; nm.value = x.nombre || "";
-      nm.addEventListener("input", () => { x.nombre = nm.value; errEl.textContent = ""; });
-      const inp = qtyInput(() => x.texto || "", (v) => { x.texto = v; });
-      row.append(rm, nm, inp); calcLabel(row, inp); rowsEl.appendChild(row);
-    });
-  }
-  function unmarkRead(name, inp) {
-    if (!inp.classList.contains("leido")) return;
-    inp.classList.remove("leido"); inp.removeAttribute("title");
-  }
   $("lotAddExtra").addEventListener("click", () => {
-    work.extras.push({ nombre: "", texto: "" }); buildRows();
-    const names = rowsEl.querySelectorAll("input.name-in");
-    if (names.length) { names[names.length - 1].focus(); rowsEl.scrollTop = rowsEl.scrollHeight; }
+    work.rows.push({ nombre: "", cat: false, cant: blank(work.n) });
+    buildGrid();
+    const names = grid.querySelectorAll("input.xname");
+    const last = names[names.length - 1];
+    if (last) { last.focus(); try { last.scrollIntoView({ block: "nearest" }); } catch (e) { /* nada */ } }
   });
-  // Enter pasa al casillero siguiente
-  $("lotForm").addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" || e.target.tagName !== "INPUT") return;
-    e.preventDefault();
-    const inputs = [...$("lotForm").querySelectorAll("input")];
-    const k = inputs.indexOf(e.target);
-    if (k >= 0 && k < inputs.length - 1) { inputs[k + 1].focus(); if (inputs[k + 1].select) inputs[k + 1].select(); }
-    else $("lotSave").focus();
+
+  // Copia la tabla (Producto + una columna por remito, sin el total) para pegarla en Excel o en Facturación > Entregas.
+  $("lotCopy").addEventListener("click", async () => {
+    const used = work.rows.filter(rowUsed);
+    if (!used.length) { note("La tabla está vacía: no hay nada para copiar."); return; }
+    const cell = (v) => { const q = parseQty(v); return q.empty ? "" : q.ok ? formatQty(q.value) : String(v).trim(); };
+    const head = ["Producto"].concat(Array.from({ length: work.n }, (_, c) => "Remito " + (c + 1)));
+    const tsv = [head.join("\t")].concat(used.map((r) => [String(r.nombre).trim() || "(sin nombre)"].concat(r.cant.map(cell)).join("\t"))).join("\n");
+    let ok = false;
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(tsv); ok = true; } } catch (e) { ok = false; }
+    if (!ok) {
+      const ta = document.createElement("textarea"); ta.value = tsv; ta.style.position = "fixed"; ta.style.opacity = "0";
+      dlg.appendChild(ta); ta.select();
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      ta.remove();
+    }
+    note(ok ? "✓ Tabla copiada: pegala en Excel (Ctrl+V)." : "No se pudo copiar la tabla en este navegador.", ok);
   });
-  $("lotForm").addEventListener("submit", (e) => e.preventDefault());
-  $("lotForm").addEventListener("input", () => { if (cur) fillHead(); });
 
   // Filas para el PDF. Devuelve null (y marca en rojo) si hay datos inválidos.
   function collect() {
-    const rows = [], cat = A.catalog(), inputs = [...rowsEl.querySelectorAll(".tt-row")];
+    const rows = [];
     let bad = 0, noName = 0;
-    const mark = (i, isBad) => { const q = inputs[i] && inputs[i].querySelector("input.q"); if (q) q.classList.toggle("bad", isBad); };
-    cat.forEach((name, i) => {
-      const q = parseQty(work.values[name]);
-      if (q.empty) { mark(i, false); return; }
-      if (!q.ok) { bad++; mark(i, true); return; }
-      mark(i, false); rows.push({ name, qtyText: formatQty(q.value) });
-    });
-    work.extras.forEach((x, k) => {
-      const q = parseQty(x.texto), nm = String(x.nombre || "").trim(), i = cat.length + k;
-      if (q.empty && !nm) return;
-      if (!q.ok || q.empty) { bad++; mark(i, true); return; }
-      if (!nm) { noName++; return; }
-      mark(i, false); rows.push({ name: nm, qtyText: formatQty(q.value) });
+    work.rows.forEach((r, i) => {
+      paintRow(i, true);
+      const t = rowTotal(r), nombre = String(r.nombre).trim();
+      if (t.bad.length) { bad += t.bad.length; return; }
+      if (!t.has) return;
+      if (!nombre) { noName++; return; }
+      rows.push({ name: nombre, qtyText: formatQty(t.value), cells: r.cant.map((v) => { const q = parseQty(v); return q.ok ? formatQty(q.value) : ""; }) });
     });
     if (bad || noName) {
-      errEl.textContent = bad ? "Revisá las cantidades marcadas en rojo (por ejemplo 12 o 2,5)." : "Falta el nombre de un producto agregado.";
-      const first = rowsEl.querySelector("input.q.bad"); if (first) first.focus();
+      note(bad ? "Revisá las celdas marcadas en rojo: tienen que ser números (por ejemplo 12 o 2,5) o sumas (120+35)." : "Falta el nombre de un producto agregado.");
+      const first = grid.querySelector("input.xq.bad, input.xname.bad");
+      if (first) first.focus();
       return null;
     }
     errEl.textContent = "";
@@ -285,9 +470,13 @@
   // ---------------------------------------------------------------- visor de fotos
   function releaseUrls() { urls.forEach((u) => URL.revokeObjectURL(u)); urls = []; }
   function viewerMsg(html) { lvMsg.hidden = !html; lvMsg.innerHTML = html || ""; img.hidden = !!html; }
+  // Muestra la foto del remito i y resalta su columna en la tabla
   function show(i) {
+    const total = urls.length || (work ? work.n : 0);
+    if (!total) return;
+    idx = Math.max(0, Math.min(total - 1, i));
+    markCol(idx);
     if (!urls.length) return;
-    idx = Math.max(0, Math.min(urls.length - 1, i));
     img.src = urls[idx];
     $("lvPos").textContent = "Remito " + (idx + 1) + " de " + urls.length;
     $("lvPrev").disabled = idx === 0; $("lvNext").disabled = idx === urls.length - 1;
@@ -313,8 +502,7 @@
         b.addEventListener("click", () => show(k)); return b;
       }));
       viewerMsg("");
-      show(0);
-      prepareSheet(it, f);
+      show(idx);
       return f;
     } catch (e) {
       if (seq !== loadSeq) return null;
@@ -335,355 +523,30 @@
     if (e.key === "ArrowRight") { e.preventDefault(); show(idx + 1); }
   });
 
-
-  // ---------------------------------------------------------------- lectura con el iPhone (Atajo "LAG Cantidades")
-  const IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  function canShareImages() {
-    try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [new File([new Uint8Array([255, 216, 255, 217])], "x.jpg", { type: "image/jpeg" })] })); }
-    catch (e) { return false; }
-  }
-  const LEC_OK = !!L && IOS && canShareImages();
-  const lecBox = $("lecBox"), lecRows = $("lecRows"), lecMsg = $("lecMsg"), lecShare = $("lecShare"), lecPaste = $("lecPaste"), lecText = $("lecText");
-  let sheet = null, sheetId = null, sheetSeq = 0;
-  const ALIAS_KEY = "lecturaAlias";
-  const loadAliases = () => { try { return JSON.parse(localStorage.getItem(ALIAS_KEY) || "{}") || {}; } catch (e) { return {}; } };
-  function saveAlias(desc, name) {
-    const k = L.norm(desc); if (!k || !name || name === "__no") return;
-    const a = loadAliases(); a[k] = name;
-    const keys = Object.keys(a); if (keys.length > 400) keys.slice(0, keys.length - 400).forEach((x) => delete a[x]);
-    try { localStorage.setItem(ALIAS_KEY, JSON.stringify(a)); } catch (e) { /* nada */ }
-  }
-  const pad2 = (n) => String(n).padStart(2, "0");
-  // "H1·F15": hoja 1, fila 15 del remito de LAG ("R": renglón de otra tabla)
-  const posLabel = (f) => "H" + f.h + (f.r ? "·" + (f.t || "F") + f.r : "");
-
-  // Hoja de lectura. En el remito de LAG (productos impresos en DETALLE) se toma SOLO la columna CANTIDAD de cada fila
-  // con algo escrito, con la etiqueta "Fnn =" (número de fila = producto). Si la foto no es ese remito, se usan los
-  // renglones completos ("Rnn =") o la hoja entera ("HOJA n COMPLETA").
-  async function analyzePage(foto) {
-    const bmp = await createImageBitmap(new Blob([foto.bytes], { type: "image/jpeg" }));
-    const sw = 1000, sh = Math.max(1, Math.round(bmp.height * sw / bmp.width));
-    const c = document.createElement("canvas"); c.width = sw; c.height = sh;
-    const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(bmp, 0, 0, sw, sh);
-    const d = x.getImageData(0, 0, sw, sh).data, g = new Uint8Array(sw * sh);
-    for (let p = 0, k = 0; p < g.length; p++, k += 4) g[p] = (d[k] * 77 + d[k + 1] * 150 + d[k + 2] * 29) >> 8;
-    const t = L.findTable(g, sw, sh);
-    if (t) {
-      // tinta en la franja del medio de cada celda; el quinto izquierdo no cuenta (ahí asoman los agujeros de la carpeta)
-      const ink = t.rows.map((r) => L.cellInk(g, sw, sh, r.cell, t.thr, { u0: 0.2, u1: 0.95, v0: 0.25, v1: 0.75 }));
-      const rows = t.rows.map((r, i) => ({ k: i + 1, r, ink: ink[i], nextInk: (ink[i + 1] || 0) >= 0.012 })).filter((r) => r.ink >= 0.012);
-      return { bmp, mode: "fila", t, rows };
-    }
-    const t2 = L.findRows(g, sw, sh);
-    if (t2) {
-      const rows = t2.rows.map((r, k) => ({ k: k + 1, r, ink: L.inkRatio(g, sw, sh, { x0: t2.x0 * sw + 3, x1: t2.x1 * sw - 3, y0: r.y0 * sh + 1, y1: r.y1 * sh - 1 }, t2.vlines, t2.thr) })).filter((r) => r.ink > 0.0035);
-      if (rows.length) return { bmp, mode: "renglon", t: t2, rows };
-    }
-    return { bmp, mode: "completa", t: null, rows: [] };
-  }
-  async function buildSheet(fotos) {
-    const pages = [];
-    for (let i = 0; i < fotos.length; i++) { pages.push(await analyzePage(fotos[i])); await new Promise((r) => setTimeout(r, 0)); }
-    // tamaño de cada recorte
-    const LBL = 205, GAP = 24, HEAD = 96;
-    pages.forEach((pg) => {
-      const bw = pg.bmp.width, bh = pg.bmp.height;
-      pg.rows.forEach((r) => {
-        const rh = (r.r.y1 - r.r.y0) * bh;
-        if (pg.mode === "fila") {
-          // la celda de CANTIDAD, enderezada (la foto puede estar torcida o la hoja curvada). Se escribe "sentado"
-          // sobre la línea de abajo: se deja más margen abajo (salvo que la fila siguiente tenga algo)
-          const c = r.r.cell, k = bw / pg.t.size.w, ML = 6, MR = 5;
-          const vTop = -0.72 * c.ht, vBot = (0.5 + (r.nextInk ? 0.12 : 0.38)) * c.ht;
-          const lu = (ML - MR) / 2, lv = (vTop + vBot) / 2, ca = Math.cos(c.ang), sa = Math.sin(c.ang);
-          r.rot = { ang: c.ang, cx: (c.cx + lu * ca - lv * sa) * k, cy: (c.cy + lu * sa + lv * ca) * k };
-          r.sw = (c.wd - ML - MR) * k; r.sh = (vBot - vTop) * k;
-          r.s = Math.min(2, 118 / r.sh);
-          return;
-        } else {
-          r.sx = pg.t.x0 * bw; r.sw = (pg.t.x1 - pg.t.x0) * bw; r.sy = r.r.y0 * bh; r.sh = rh;
-          r.s = Math.min(1.3, 1550 / r.sw);
-        }
-        r.sy = Math.max(0, r.sy); r.sh = Math.min(bh - r.sy, r.sh);
-      });
-    });
-    const maxW = Math.max(0, ...pages.map((pg) => Math.max(0, ...pg.rows.map((r) => r.sw * r.s))));
-    const W = Math.max(760, Math.ceil(LBL + maxW + 40)), FULLW = Math.min(1700, W - 60);
-    let scale = 1;
-    const layout = () => {
-      let y = 20;
-      pages.forEach((pg) => {
-        pg.y = y; y += HEAD;
-        if (pg.rows.length) pg.rows.forEach((r) => { r.dw = r.sw * r.s * scale; r.h = Math.max(36, r.sh * r.s * scale); r.y = y; y += r.h + GAP; });
-        else { pg.fs = (FULLW / pg.bmp.width) * scale; y += pg.bmp.height * pg.fs + GAP; }
-        y += 16;
-      });
-      return y;
-    };
-    let H = layout();
-    while (W * H > 15.5e6 && scale > 0.4) { scale *= 0.85; H = layout(); }   // límite de tamaño de imagen del iPhone
-    const cv = document.createElement("canvas"); cv.width = W; cv.height = Math.ceil(H);
-    const x = cv.getContext("2d");
-    x.fillStyle = "#fff"; x.fillRect(0, 0, W, cv.height);
-    x.fillStyle = "#000"; x.textBaseline = "middle";
-    pages.forEach((pg, i) => {
-      x.font = "bold 54px Helvetica, Arial, sans-serif"; x.textAlign = "left";
-      x.fillText("HOJA " + (i + 1) + (pg.rows.length ? "" : " COMPLETA"), 24, pg.y + HEAD / 2 - 8);
-      x.fillRect(24, pg.y + HEAD - 18, W - 48, 3);
-      if (pg.rows.length) {
-        pg.rows.forEach((r) => {
-          x.font = "bold 50px Helvetica, Arial, sans-serif"; x.textAlign = "right";   // etiqueta pegada al recorte
-          x.fillText((pg.mode === "fila" ? "F" : "R") + pad2(r.k) + " =", LBL - 10, r.y + r.h / 2); x.textAlign = "left";
-          if (r.rot) {                                            // recorte girado: la fila queda derecha
-            x.save(); x.beginPath(); x.rect(LBL, r.y, r.dw, r.h); x.clip();
-            x.translate(LBL + r.dw / 2, r.y + r.h / 2); x.scale(r.dw / r.sw, r.h / r.sh); x.rotate(-r.rot.ang);
-            x.drawImage(pg.bmp, -r.rot.cx, -r.rot.cy); x.restore();
-          } else x.drawImage(pg.bmp, r.sx, r.sy, r.sw, r.sh, LBL, r.y, r.dw, r.h);
-          if (pg.mode === "renglon") {                            // se tapan las líneas verticales de la tabla
-            x.fillStyle = "#fff";
-            const bw = pg.bmp.width, k = r.dw / r.sw;
-            pg.t.vlines.forEach((v) => { const a = LBL + (v.x0 * bw - r.sx) * k - 3, b = LBL + (v.x1 * bw - r.sx) * k + 3; if (b > LBL && a < LBL + r.dw) x.fillRect(Math.max(LBL, a), r.y, b - Math.max(LBL, a), r.h); });
-            x.fillStyle = "#000";
-          }
-        });
-      } else x.drawImage(pg.bmp, 30, pg.y + HEAD, pg.bmp.width * pg.fs, pg.bmp.height * pg.fs);
-      if (pg.bmp.close) pg.bmp.close();
-    });
-    const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.92));
-    return {
-      file: new File([blob], "lag-cantidades.jpg", { type: "image/jpeg" }),
-      pages: pages.map((pg) => ({ mode: pg.mode, rows: pg.rows.map((r) => r.k) })),
-      rows: pages.reduce((s, p) => s + p.rows.length, 0), full: pages.filter((p) => !p.rows.length).length,
-      empty: pages.filter((p) => p.mode === "fila" && !p.rows.length).length
-    };
-  }
-  async function prepareSheet(it, fotos) {
-    if (!LEC_OK || !fotos || !fotos.length) return null;
-    if (sheet && sheetId === it.id) { renderLecBox(); return sheet; }
-    const seq = ++sheetSeq;
-    sheet = null; sheetId = null; renderLecBox();
-    try {
-      const s = await buildSheet(fotos);
-      if (seq !== sheetSeq) return null;
-      sheet = s; sheetId = it.id;
-    } catch (e) { console.error("Hoja de lectura:", e); if (seq === sheetSeq) lecMsg.textContent = "No se pudo preparar la lectura: " + (e.message || e); }
-    renderLecBox();
-    return sheet;
-  }
-
-  // Comparte la hoja con el Atajo. Devuelve true si se compartió.
-  async function shareSheet() {
-    if (!sheet) return false;
-    try { await navigator.share({ files: [sheet.file] }); }
-    catch (e) {
-      if (e && e.name === "AbortError") return false;
-      lecMsg.textContent = "No se pudo abrir la hoja para compartir (" + ((e && e.message) || e) + "). Probá de nuevo.";
-      return false;
-    }
-    lecWaiting = true; renderLecBox();
-    return true;
-  }
-  let lecWaiting = false;
-  lecShare.addEventListener("click", shareSheet);
-
-  // Pegar lo que copió el Atajo
-  lecPaste.addEventListener("click", async () => {
-    let text = "";
-    try { text = navigator.clipboard && navigator.clipboard.readText ? await navigator.clipboard.readText() : ""; }
-    catch (e) { text = ""; }
-    if (!text) { lecText.hidden = false; lecText.value = ""; lecText.focus(); lecMsg.textContent = "Mantené apretado el recuadro y tocá «Pegar»."; return; }
-    handleText(text);
-  });
-  lecText.addEventListener("paste", (e) => { const t = e.clipboardData && e.clipboardData.getData("text"); if (t) { e.preventDefault(); lecText.value = t; handleText(t); } });
-  lecText.addEventListener("input", () => { clearTimeout(lecText._t); lecText._t = setTimeout(() => { if (lecText.value.trim()) handleText(lecText.value); }, 700); });
-
-  async function handleText(text) {
-    const read = L.parse(text).filter((r) => r.qty !== null && !r.oc);
-    if (!read.length) {
-      lecMsg.textContent = "No encontré cantidades en lo que copiaste. Tocá «Leer cantidades», elegí «LAG Cantidades» y después «Pegar lectura».";
-      return;
-    }
-    lecText.hidden = true; lecWaiting = false;
-    const cat = A.catalog(), aliases = loadAliases();
-    const pageMode = (hoja) => { const pg = sheet && sheetId === cur.id && sheet.pages ? sheet.pages[hoja - 1] : null; return pg ? pg.mode : null; };
-    const filas = read.map((r) => {
-      const md = pageMode(r.hoja);
-      if (r.renglon && (md ? md === "fila" : r.fila)) {
-        // remito de LAG: el número de fila dice el producto (impreso en DETALLE)
-        const impreso = L.FILAS_REMITO[r.renglon - 1];
-        const name = impreso ? (cat.includes(impreso) ? impreso : (L.match(impreso, cat, {}).name || impreso)) : "";
-        const f = { h: r.hoja, r: r.renglon, t: "F", q: r.qtyText, d: (impreso ? "Fila " + r.renglon : "Fila " + r.renglon + " (sin producto impreso)") + (r.dudoso ? " · revisá la fila con la foto" : ""), p: name, alts: [] };
-        if (r.dudoso) f.dudoso = true;
-        return f;
-      }
-      const m = L.match(r.desc, cat, aliases);
-      return { h: r.hoja, r: r.renglon, t: "R", q: r.qtyText, d: r.desc, p: m.name || (r.qty > 5000 ? "__no" : ""), alts: m.alts };
-    });
-    work.leido = { fecha: Date.now(), filas, aplicados: [] };
-    $("lecDet").open = true;
-    renderLecBox(); fillHead();
-    try { lecBox.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) { /* nada */ }
-    const pending = filas.filter((f) => !f.p).length, dudosos = filas.filter((f) => f.dudoso).length;
-    const clash = filas.some((f) => f.p && f.p !== "__no" && String(work.values[f.p] || "").trim());
-    if (!pending && !dudosos && !clash) await applyReading(true);
-    else lecMsg.textContent = pending ? "Elegí el producto de los renglones marcados y tocá «Pasar a la tabla»." :
-      dudosos ? "El iPhone no leyó todas las filas: revisá con la foto las marcadas y tocá «Pasar a la tabla»." :
-      "La tabla ya tenía cantidades: revisá y tocá «Pasar a la tabla» para reemplazarlas.";
-  }
-
-  function renderLecBox() {
-    if (!cur || !work) return;
-    const le = work.leido, show = LEC_OK || !!le;
-    lecBox.hidden = !show;
-    if (!show) return;
-    $("lecTools").hidden = !LEC_OK;
-    lecShare.disabled = !sheet || busy;
-    lecShare.lastChild.textContent = sheet ? "Leer cantidades" : "Preparando…";
-    lecShare.classList.toggle("is-busy", !sheet);
-    lecPaste.classList.toggle("pulse", lecWaiting);
-    const cat = A.catalog();
-    lecRows.replaceChildren();
-    if (le) {
-      const sin = le.filas.filter((f) => !f.p).length;
-      $("lecSummary").textContent = "Leído el " + fmtDay(le.fecha) + " a las " + fmtTime(le.fecha) + " · " + le.filas.length + (le.filas.length === 1 ? " renglón" : " renglones") +
-        (sin ? " · " + sin + " sin producto" : "") + (le.aplicados.length ? " · ✓ en la tabla" : "");
-      le.filas.forEach((f) => {
-        const row = document.createElement("div");
-        row.className = "lec-row" + (!f.p || f.dudoso ? " warn" : f.p === "__no" ? " off" : "");
-        const pos = document.createElement("span"); pos.className = "lec-pos"; pos.textContent = posLabel(f);
-        const q = document.createElement("input"); q.type = "text"; q.inputMode = "decimal"; q.className = "lec-q"; q.value = f.q;
-        q.addEventListener("input", () => {
-          f.q = q.value; q.classList.toggle("bad", parseQty(q.value).ok === false);
-          if (f.dudoso) { delete f.dudoso; row.className = "lec-row" + (!f.p ? " warn" : f.p === "__no" ? " off" : ""); }
-          fillHead();
-        });
-        const sel = document.createElement("select"); sel.className = "lec-p";
-        const opts = ['<option value="">— elegí el producto —</option>'];
-        const alts = (f.alts || []).filter((n) => cat.includes(n));
-        if (alts.length) opts.push('<optgroup label="Parecidos">' + alts.map((n) => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("") + "</optgroup>");
-        opts.push('<optgroup label="Todos">' + cat.map((n) => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("") + "</optgroup>");
-        opts.push('<option value="__no">No sumar este renglón</option>');
-        sel.innerHTML = opts.join("");
-        if (f.p && f.p !== "__no" && !cat.includes(f.p)) { const o = document.createElement("option"); o.value = f.p; o.textContent = f.p; sel.insertBefore(o, sel.options[1]); }
-        sel.value = f.p || "";
-        sel.addEventListener("change", () => {
-          f.p = sel.value; if (f.p && f.d && f.t !== "F") saveAlias(f.d, f.p);
-          delete f.dudoso;
-          row.className = "lec-row" + (!f.p ? " warn" : f.p === "__no" ? " off" : "");
-          renderLecSummaryOnly(); fillHead();
-        });
-        const d = document.createElement("small"); d.className = "lec-d"; d.textContent = f.d ? "“" + f.d + "”" : "(sin descripción)";
-        row.append(pos, q, sel, d);
-        lecRows.appendChild(row);
-      });
-    } else $("lecSummary").textContent = "";
-    $("lecDet").hidden = !le;
-    $("lecApply").lastChild.textContent = le && le.aplicados.length ? "Volver a pasar a la tabla" : "Pasar a la tabla";
-    // mensajes de estado (cuando ya hay una lectura, los escriben handleText / applyReading)
-    if (!le && LEC_OK) lecMsg.textContent = lecWaiting ? "Listo. Ahora tocá «Pegar lectura» y después «Pegar»." : (sheet ? (sheet.rows ? "Se van a leer " + sheet.rows + (sheet.rows === 1 ? " cantidad" : " cantidades") + " de la columna CANTIDAD" + (sheet.full ? " y " + sheet.full + " hoja(s) completa(s) (no encontré la tabla)" : "") + "." : "No encontré la tabla en las fotos: se van a leer las hojas completas.") : "");
-  }
-  function renderLecSummaryOnly() {
-    const le = work && work.leido; if (!le) return;
-    const sin = le.filas.filter((f) => !f.p).length;
-    $("lecSummary").textContent = "Leído el " + fmtDay(le.fecha) + " a las " + fmtTime(le.fecha) + " · " + le.filas.length + (le.filas.length === 1 ? " renglón" : " renglones") + (sin ? " · " + sin + " sin producto" : "") + (le.aplicados.length ? " · ✓ en la tabla" : "");
-  }
-
-  // Suma lo leído por producto y lo pasa a la tabla (como "120+45"). auto = sin preguntas.
-  async function applyReading(auto) {
-    const le = work && work.leido; if (!le) return;
-    const sums = {}, cat = A.catalog();
-    for (const f of le.filas) {
-      if (!f.p || f.p === "__no") continue;
-      const q = parseQty(f.q);
-      if (!q.ok) { lecMsg.textContent = "Revisá la cantidad «" + f.q + "» (" + posLabel(f) + ")."; return; }
-      (sums[f.p] = sums[f.p] || []).push(formatQty(q.value));
-    }
-    const names = Object.keys(sums);
-    if (!names.length) { lecMsg.textContent = "Elegí el producto de al menos un renglón."; return; }
-    if (!auto) {
-      const sin = le.filas.filter((f) => !f.p).length;
-      const clash = names.filter((n) => !le.aplicados.includes(n) && String(cat.includes(n) ? work.values[n] || "" : "").trim());
-      const parts = [];
-      if (sin) parts.push(sin + (sin === 1 ? " renglón no tiene" : " renglones no tienen") + " producto y no se va" + (sin === 1 ? "" : "n") + " a sumar.");
-      if (clash.length) parts.push("Se reemplazan las cantidades que ya estaban cargadas en: " + clash.join(", ") + ".");
-      if (parts.length && !(await A.askConfirm(parts.join("\n\n") + "\n\n¿Pasar la lectura a la tabla?", "Pasar a la tabla", "Volver"))) return;
-    }
-    le.filas.forEach((f) => { delete f.dudoso; });                                             // ya las revisó
-    le.aplicados.forEach((n) => { if (!sums[n] && cat.includes(n)) work.values[n] = ""; });   // lectura anterior
-    work.extras = work.extras.filter((x) => !le.aplicados.includes(x.nombre) || sums[x.nombre]);
-    names.forEach((n) => {
-      const text = sums[n].join("+");
-      if (cat.includes(n)) work.values[n] = text;
-      else { const ex = work.extras.find((x) => x.nombre === n); if (ex) ex.texto = text; else work.extras.push({ nombre: n, texto: text }); }
-    });
-    le.aplicados = names;
-    buildRows(); renderLecBox();
-    const rows = await saveTable({ force: true });
-    if (rows) {
-      $("lecDet").open = false;
-      lecMsg.textContent = "✓ Cantidades pasadas a la tabla y guardadas. Están resaltadas en amarillo: revisalas con las fotos.";
-      A.setStatus("Lectura del iPhone guardada ✔", 4000);
-    }
-  }
-  $("lecApply").addEventListener("click", () => applyReading(false));
-  $("lecClear").addEventListener("click", async () => {
-    if (!work || !work.leido) return;
-    if (!(await A.askConfirm("¿Descartar la lectura del iPhone? Las cantidades que ya pasaste a la tabla quedan como están.", "Descartar", "Cancelar"))) return;
-    work.leido = null; renderLecBox(); await saveTable({ force: true }); buildRows();
-  });
-  const openHelp = () => $("lecHelpDialog").showModal();
-  $("lecHelp").addEventListener("click", openHelp);
-  $("lecHelpClose").addEventListener("click", () => $("lecHelpDialog").close());
-  $("lecHelpOk").addEventListener("click", () => $("lecHelpDialog").close());
-  const helpBtn = $("lecHelpSettings"); if (helpBtn) helpBtn.addEventListener("click", openHelp);
-
-  // Después de "Guardar PDF" en el iPhone: ofrecer leer las cantidades enseguida.
-  async function offerReading(id) {
-    if (!LEC_OK || A.settings().lecturaPreguntar === false) return;
-    let it = items.find((x) => x.id === id);
-    if (!it) { await refresh(); it = items.find((x) => x.id === id); }
-    const fotos = cache.get(id);
-    if (!it || !fotos) return;
-    A.setStatus("Preparando la lectura de cantidades…", 0);
-    const tmp = { id };
-    const s = await prepareSheet(tmp, fotos);
-    A.setStatus("", 1);
-    if (!s) return;
-    if (!(await A.askConfirm("¿Leer ahora las cantidades con el iPhone?\n\nSe abre la hoja para compartir: elegí «LAG Cantidades».", "Leer ahora", "Más tarde"))) return;
-    const shared = await shareSheet();
-    await openLote(it, { reading: true });
-    if (shared) { lecWaiting = true; renderLecBox(); try { lecBox.scrollIntoView({ block: "center" }); } catch (e) { /* nada */ } }
-  }
-
   // ---------------------------------------------------------------- abrir / cerrar
   async function openLote(it, opts = {}) {
     if (dlg.open) { if (!(await closeLote())) return; }
-    cur = it; work = toWork(it);
+    cur = it; work = toWork(it); idx = 0; saveErr = "";
     mode = it.periodo && it.periodo.mode === "quincenal" ? "quincenal" : "semanal";
     orig = snapshot();
     ocEl.value = work.oc; ocEl.classList.remove("bad"); errEl.textContent = "";
     stage.classList.remove("zoom"); $("lvZoom").setAttribute("aria-pressed", "false");
-    if (!opts.reading) { lecWaiting = false; }
-    lecMsg.textContent = ""; lecText.hidden = true;
-    if (sheetId !== it.id) { sheet = null; sheetId = null; }
-    $("lecDet").open = !!(work.leido && (!work.leido.aplicados.length || work.leido.filas.some((f) => !f.p)));
-    buildRows(); refreshPeriodInfo(); setBusy(false); renderLecBox();
+    buildGrid(); refreshPeriodInfo(); setBusy(false);
     dlg.showModal();
-    rowsEl.scrollTop = 0; $("lotForm").scrollTop = 0;
+    gridWrap.scrollTop = 0; gridWrap.scrollLeft = 0; $("lotForm").scrollTop = 0;
     const p = loadShots(it);
     if (opts.send) { await p; if (cur === it && dlg.open) sendCurrent(); }
-    else if (window.matchMedia && matchMedia("(pointer: fine)").matches) { const f = work.oc ? rowsEl.querySelector("input.q") : ocEl; if (f) f.focus(); }
+    else if (finePointer()) { if (work.oc) focusCell(0, 0); else ocEl.focus(); }
   }
-  // Devuelve false si el usuario decide quedarse (o si no se pudo guardar).
+  // Devuelve false si el usuario decide quedarse.
   async function closeLote() {
     if (busy) return false;
-    if (dirty()) {
-      const save = await A.askConfirm("Hay cambios sin guardar en la tabla de recepciones. ¿Guardarlos?", "Guardar", "Descartar");
-      if (save && !(await saveTable())) return false;
+    if (cur && !(await flushSave())) {
+      if (!(await A.askConfirm("No se pudieron guardar los últimos cambios de la tabla de recepciones:\n" + saveErr + "\n\n¿Cerrar igual? Esos cambios se pierden.", "Cerrar igual", "Volver"))) return false;
     }
-    loadSeq++; sheetSeq++; releaseUrls(); img.removeAttribute("src");
+    loadSeq++; releaseUrls(); img.removeAttribute("src");
     if (dlg.open) dlg.close();
-    cur = null; work = null; lecWaiting = false;
+    cur = null; work = null; saveErr = ""; grid.innerHTML = "";
     return true;
   }
   $("lotClose").addEventListener("click", () => closeLote());
@@ -691,57 +554,43 @@
 
   function setBusy(on, text) {
     busy = on;
-    ["lotSend", "lotSave", "lotDownload", "lotDelete", "lotClose", "lecApply", "lecPaste"].forEach((id) => { $(id).disabled = on; });
-    $("lotSend").classList.toggle("is-busy", !!on && text !== undefined && /Enviando|Preparando/.test(text));
+    ["lotSend", "lotDownload", "lotDelete", "lotClose", "lotCopy", "lotAddExtra"].forEach((id) => { $(id).disabled = on; });
+    $("lotForm").inert = !!on;
+    $("lotSend").classList.toggle("is-busy", !!on && text !== undefined && /Enviando|Preparando|Guardando/.test(text));
     if (on && text) $("lotDest").textContent = text; else if (!on && cur) refreshPeriodInfo();
   }
-
-  // Guarda la tabla y el período. Devuelve las filas (o null si hay errores).
-  async function saveTable(opts = {}) {
-    const rows = collect();
-    if (rows === null) return null;
-    const tabla = fromWork(), periodo = periodOf(cur, mode);
-    const changed = dirty();
-    let estado = tabla.oc && rows.length ? "lista" : "pendiente";
-    if (isSent(cur) && !changed && !opts.force) estado = "enviado";      // abrir y cerrar un enviado no lo cambia
-    if (!changed && estado === cur.estado && !opts.force) return rows;
-    setBusy(true, "Guardando…");
-    try {
-      await S.update(cur, { tabla, periodo, estado });
-      orig = snapshot();
-      A.setStatus("Tabla de recepciones guardada ✔", 3500);
-      render();
-      return rows;
-    } catch (e) {
-      errEl.textContent = "No se pudo guardar: " + (e.message || e);
-      return null;
-    } finally { setBusy(false); }
-  }
-  $("lotSave").addEventListener("click", async () => {
-    const rows = await saveTable({ force: true });
-    if (!rows) return;
-    if (!work.oc || !rows.length) { errEl.textContent = ""; $("lotDest").textContent = "Guardado. Para poder enviarlo falta " + (!work.oc ? "el número de OC" : "cargar al menos una cantidad") + "."; }
-    else await closeLote();
-  });
 
   async function buildPdfOf(rows) {
     const f = shots || await loadShots(cur);
     if (!f) throw new Error("No se pudieron cargar las fotos.");
     const per = periodOf(cur, mode), name = fileOf(work.oc, per);
-    return { pdf: A.makePdf(f, name, work.oc, per, rows), name, per };
+    return { pdf: A.makePdf(f, name, work.oc, per, rows, work.n), name, per };
   }
 
+  // La tabla de un lote, lista para Facturación: {id, oc, periodo, estado, enviado, remitos, filas: [{nombre, cant: [número|null por remito], total}]}
+  function recepcionOf(it) {
+    const w = toWork(it);
+    return {
+      id: it.id, oc: w.oc, periodo: it.periodo || periodOf(it), estado: it.estado, enviado: it.enviado || null, archivo: it.archivo || "", remitos: w.n,
+      filas: w.rows.filter(rowUsed).map((r) => ({ nombre: String(r.nombre).trim(), cant: r.cant.map((v) => { const q = parseQty(v); return q.ok ? q.value : null; }), total: rowTotal(r).value }))
+    };
+  }
+
+  // "Guardar PDF": guarda la tabla, arma el PDF (remitos + tabla) y lo manda a Drive y al borrador de Gmail.
   async function sendCurrent() {
     if (busy || !cur) return;
-    if (!A.bridgeReady()) {
-      await A.showMessage("Para enviarlo al borrador de Gmail desde este dispositivo, configurá el puente en Ajustes (dirección y clave del puente de Google).\n\nMientras tanto podés usar “Descargar PDF”.");
-      return;
-    }
-    if (!work.oc) { ocEl.classList.add("bad"); ocEl.focus(); errEl.textContent = "Escribí el número de la orden de compra (OC): con él se nombra el PDF y la carpeta de Drive."; return; }
+    if (!work.oc) { ocEl.classList.add("bad"); ocEl.focus(); note("Escribí el número de la orden de compra (OC): con él se nombra el PDF y la carpeta de Drive."); return; }
     const rows = collect();
     if (rows === null) return;
-    if (!rows.length && !(await A.askConfirm("No cargaste ninguna cantidad: el PDF va a salir sin la tabla de recepciones.\n\n¿Enviarlo igual?", "Enviar igual", "Volver"))) return;
-    if (!(await saveTable({ force: true }))) return;
+    if (!rows.length && !(await A.askConfirm("La tabla de recepciones está vacía: el PDF va a salir solo con los remitos.\n\n¿Guardarlo igual?", "Guardar igual", "Volver"))) return;
+    setBusy(true, "Guardando la tabla…");
+    const saved = await flushSave();
+    setBusy(false);
+    if (!saved) { note("No se pudo guardar la tabla: " + saveErr); return; }
+    if (!A.bridgeReady()) {
+      if (await A.askConfirm("Este dispositivo no tiene configurado el puente a Google Drive y Gmail (Ajustes), así que no se puede mandar al borrador.\n\n¿Querés descargar el PDF?", "Descargar PDF", "Cancelar")) downloadCurrent(rows);
+      return;
+    }
     const it = cur;
     let built = null;
     setBusy(true, "Preparando el PDF…");
@@ -752,12 +601,13 @@
       await S.update(it, { estado: "enviado", enviado: Date.now(), carpeta: String(sent.carpeta || ""), archivo: built.name }).catch((e) => console.warn(e));
       setBusy(false);
       orig = snapshot();
+      try { document.dispatchEvent(new CustomEvent("lag:recepcion", { detail: recepcionOf(it) })); } catch (e) { console.warn(e); }
       await closeLote();
       refresh();
-      A.setStatus("Enviado ✔ " + built.name + ".pdf", 8000);
+      A.setStatus("PDF guardado ✔ " + built.name + ".pdf", 8000);
       await A.showMessage("PDF guardado en Drive:\n" + (sent.carpeta || P.folderPath(it.tabla.oc, built.per)) +
         (sent.reemplazado ? "\n(reemplazó un PDF con el mismo nombre; el anterior está en la papelera de Drive)" : "") +
-        "\n\nBorrador creado en Gmail para revisar y enviar.");
+        "\n\nBorrador creado en Gmail con los remitos y la tabla de recepciones, para revisar y enviar.");
     } catch (e) {
       console.error(e);
       setBusy(false);
@@ -768,49 +618,61 @@
   }
   $("lotSend").addEventListener("click", sendCurrent);
 
-  $("lotDownload").addEventListener("click", async () => {
+  async function downloadCurrent(rows) {
     if (busy || !cur) return;
-    const rows = collect();
+    rows = rows || collect();
     if (rows === null) return;
     setBusy(true, "Preparando el PDF…");
     try {
       const b = await buildPdfOf(rows);
       A.downloadBlob(b.pdf, b.name + ".pdf");
-      A.setStatus("PDF “" + b.name + ".pdf” descargado", 6000);
-    } catch (e) { errEl.textContent = "No se pudo generar el PDF: " + (e.message || e); }
+      note("✓ PDF «" + b.name + ".pdf» descargado.", true);
+    } catch (e) { note("No se pudo generar el PDF: " + (e.message || e)); }
     finally { setBusy(false); }
-  });
+  }
+  $("lotDownload").addEventListener("click", () => downloadCurrent());
 
   $("lotDelete").addEventListener("click", async () => {
     if (busy || !cur) return;
     const it = cur;
-    const warn = isSent(it) ? "" : "\n\nTodavía no se envió al borrador de Gmail.";
-    if (!(await A.askConfirm("¿Borrar este PDF guardado (" + hojas(it.paginas || 0) + ")? No se puede deshacer." + warn, "Borrar", "Cancelar"))) return;
+    const warn = isSent(it) ? "" : "\n\nTodavía no se guardó el PDF en Drive ni en el borrador de Gmail.";
+    if (!(await A.askConfirm("¿Borrar estos remitos guardados (" + hojas(it.paginas || 0) + ") y su tabla? No se puede deshacer." + warn, "Borrar", "Cancelar"))) return;
+    clearTimeout(saveTimer); saveTimer = 0;
+    while (saving) await saving;
     setBusy(true, "Borrando…");
     try {
       await S.remove(it);
       cache.delete(it.id);
       setBusy(false); orig = snapshot();
       await closeLote();
-      A.setStatus("PDF borrado.", 4000);
+      A.setStatus("Remitos borrados.", 4000);
       refresh();
-    } catch (e) { setBusy(false); errEl.textContent = "No se pudo borrar: " + (e.message || e); }
+    } catch (e) { setBusy(false); note("No se pudo borrar: " + (e.message || e)); }
   });
 
   // ---------------------------------------------------------------- inicio
   let unlocked = false;
-  A.onSettings = () => { render(); if (cur && dlg.open && !dirty()) { work = toWork(cur); orig = snapshot(); buildRows(); refreshPeriodInfo(); } };
+  A.onSettings = async () => {
+    render();
+    if (cur && dlg.open) { await flushSave(); if (!cur) return; work = toWork(cur); orig = snapshot(); buildGrid(); refreshPeriodInfo(); }
+  };
   const start = () => { unlocked = true; refresh(); S.retryUploads(); };
   if (window.LAGAuth) window.LAGAuth.onUnlock(start); else start();
 
   window.Lotes = {
-    async saveBatch(list, periodo, onProgress) {
-      const r = await S.save(list, periodo, onProgress);
+    // Guarda las fotos recién escaneadas como un lote nuevo. extra = {oc}
+    async saveBatch(list, periodo, onProgress, extra) {
+      const r = await S.save(list, periodo, onProgress, extra);
       if (r.fotos) { cache.set(r.id, r.fotos); while (cache.size > 2) cache.delete(cache.keys().next().value); delete r.fotos; }
       await refresh();
       return r;
     },
-    offerReading,
-    refresh
+    refresh,
+    // Tablas de recepciones guardadas (todas, o las de una OC), para la sección Facturación.
+    async recepciones(oc) {
+      await refresh();
+      const want = oc ? P.cleanOc(oc) : "";
+      return items.filter((it) => it.tabla && (!want || ocOf(it) === want)).map(recepcionOf);
+    }
   };
 })();

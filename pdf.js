@@ -1,7 +1,7 @@
 // pdf.js — Generador de PDF sin librerías externas.
 // buildPdf(pages, opts)
 //   pages: [{bytes: Uint8Array (JPEG), w, h}]   -> una página A4 por remito, con encabezado y pie
-//   opts:  {company, date, logo:{bytes,w,h}|null, summary: null | {title, rows:[{name, qtyText}]}}
+//   opts:  {company, date, logo:{bytes,w,h}|null, summary: null | {rows:[{name, qtyText, cells?:[texto por remito]}], cols, note}}
 // La tabla de recepciones (summary) va al final. Devuelve un Blob PDF.
 (function (root) {
   "use strict";
@@ -96,56 +96,75 @@
     return ops;
   }
 
-  // Páginas de la tabla de recepciones
+  // Páginas de la tabla de recepciones. Con varias columnas (una por remito: summary.cols y rows[i].cells) se arma la
+  // planilla Producto | Rem. 1 | Rem. 2 | … | Total; de 5 remitos en adelante la hoja va apaisada. Con más de 14
+  // remitos (no entran) queda solo el total de cada producto.
+  const MAX_COLS = 14;
+  function tableGeom(S) {
+    const cols = S.cols >= 2 && S.cols <= MAX_COLS && S.rows.every((r) => Array.isArray(r.cells)) ? S.cols : 0;
+    const land = cols > 4, pw = land ? A4H : A4W, ph = land ? A4W : A4H;
+    const TM = cols ? 40 : 56, TW = pw - 2 * TM, C_N = cols ? 28 : 34, C_Q = cols ? 66 : 120;
+    const C_R = cols ? Math.min(58, (TW - C_N - C_Q - 170) / cols) : 0;
+    return { cols, pw, ph, TM, TW, C_N, C_Q, C_R, C_P: TW - C_N - C_Q - cols * C_R, FS: cols > 9 ? 8.5 : cols ? 9.5 : 10.5 };
+  }
   function layoutTable(o, pageNoStart, pageTotal) {
-    const S = o.summary, TM = 56, TW = A4W - 2 * TM;
-    const RH = 22, FS = 10.5, BOTTOM = 62;
-    const C_N = 34, C_Q = 120;
+    const S = o.summary, G = tableGeom(S), { pw: PW, ph: PH, TM, TW, C_N, C_Q, C_R, C_P, FS, cols } = G;
+    const RH = cols ? 20 : 22, BOTTOM = 62;
     const out = [];
     let ops, y, first = true, pageNo = pageNoStart;
+    const colLabel = (k) => (C_R >= 44 ? "Rem. " : "R") + (k + 1);
+    const colRight = (k) => TM + C_N + C_P + (k + 1) * C_R - 6;
 
     function header() {
       ops = "";
       if (first) {
         let tx = TM, logoH = 74;
-        if (o.logo) { const l = logoOp(o.logo, TM, A4H - 40 - logoH, logoH); ops += l.ops; tx = TM + l.w + 20; }
-        ops += text("TABLA DE RECEPCIONES", tx, A4H - 72, 21, "F3", WINE);
-        ops += text(o.company || "", tx, A4H - 90, 10.5, "F2", INK);
+        if (o.logo) { const l = logoOp(o.logo, TM, PH - 40 - logoH, logoH); ops += l.ops; tx = TM + l.w + 20; }
+        ops += text("TABLA DE RECEPCIONES", tx, PH - 72, 21, "F3", WINE);
+        ops += text(o.company || "", tx, PH - 90, 10.5, "F2", INK);
         const meta = [o.oc ? "OC: " + o.oc : "", o.periodText ? "Período: " + o.periodText : "", o.date ? "Fecha: " + o.date : "", o.remitos ? "Remitos escaneados: " + o.remitos : ""].filter(Boolean).join("   ·   ");
-        if (meta) ops += text(meta, tx, A4H - 105, 9, "F1", MUTED);
-        ops += line(TM, A4H - 128, A4W - TM, A4H - 128, WINE, 1.4);
-        y = A4H - 148;
+        if (meta) ops += text(meta, tx, PH - 105, 9, "F1", MUTED);
+        ops += line(TM, PH - 128, PW - TM, PH - 128, WINE, 1.4);
+        y = PH - 148;
       } else {
         let tx = TM;
-        if (o.logo) { const l = logoOp(o.logo, TM, A4H - 28 - 34, 34); ops += l.ops; tx = TM + l.w + 12; }
-        ops += text("Tabla de recepciones (continuación)", tx, A4H - 50, 12, "F3", WINE);
-        ops += line(TM, A4H - 72, A4W - TM, A4H - 72, WINE, 1.1);
-        y = A4H - 90;
+        if (o.logo) { const l = logoOp(o.logo, TM, PH - 28 - 34, 34); ops += l.ops; tx = TM + l.w + 12; }
+        ops += text("Tabla de recepciones (continuación)", tx, PH - 50, 12, "F3", WINE);
+        ops += line(TM, PH - 72, PW - TM, PH - 72, WINE, 1.1);
+        y = PH - 90;
       }
       // fila de títulos
+      const HS = cols > 9 ? 8.5 : 9.5;
       ops += rect(TM, y - RH, TW, RH, WINE);
-      ops += text("N°", TM + 10, y - RH + 7, 9.5, "F2", "1 1 1");
-      ops += text("Producto", TM + C_N + 10, y - RH + 7, 9.5, "F2", "1 1 1");
-      ops += rightText("Cantidad", TM + TW - 12, y - RH + 7, 9.5, "F2", "1 1 1", true);
+      ops += text("N°", TM + 8, y - RH + 6.5, HS, "F2", "1 1 1");
+      ops += text("Producto", TM + C_N + 8, y - RH + 6.5, HS, "F2", "1 1 1");
+      for (let k = 0; k < cols; k++) ops += rightText(colLabel(k), colRight(k), y - RH + 6.5, HS, "F2", "1 1 1", true);
+      ops += rightText(cols ? "Total" : "Cantidad", TM + TW - 10, y - RH + 6.5, HS, "F2", "1 1 1", true);
       y -= RH;
     }
-    const close = () => { ops += footer(A4W, o, pageNo, pageTotal); out.push(ops); pageNo++; first = false; };
+    const close = () => { ops += footer(PW, o, pageNo, pageTotal); out.push(ops); pageNo++; first = false; };
 
     header();
     S.rows.forEach((r, i) => {
       if (y - RH < BOTTOM) { close(); header(); }
       if (i % 2 === 1) ops += rect(TM, y - RH, TW, RH, "0.965 0.945 0.93");
-      ops += text(String(i + 1), TM + 10, y - RH + 7, 9, "F1", MUTED);
-      ops += text(fitText(r.name, TW - C_N - C_Q - 16, FS, false), TM + C_N + 10, y - RH + 7, FS, "F1", INK);
-      ops += rightText(r.qtyText, TM + TW - 12, y - RH + 7, FS, "F2", INK, true);
+      if (cols) ops += rect(TM + TW - C_Q, y - RH, C_Q, RH, i % 2 === 1 ? "0.93 0.90 0.88" : "0.955 0.935 0.92");
+      ops += text(String(i + 1), TM + 8, y - RH + 6.5, FS - 1, "F1", MUTED);
+      ops += text(fitText(r.name, C_P - 14, FS, false), TM + C_N + 8, y - RH + 6.5, FS, "F1", INK);
+      for (let k = 0; k < cols; k++) {
+        const c = r.cells[k] || "";
+        ops += rightText(c ? fitText(c, C_R - 8, FS, false) : "–", colRight(k), y - RH + 6.5, FS, "F1", c ? INK : "0.72 0.69 0.66", false);
+      }
+      ops += rightText(r.qtyText, TM + TW - 10, y - RH + 6.5, FS, "F2", INK, true);
       ops += line(TM, y - RH, TM + TW, y - RH, "0.86 0.83 0.80", 0.5);
       y -= RH;
     });
     // cierre de la tabla
     ops += line(TM, y, TM + TW, y, WINE, 1.1);
-    if (S.note) ops += text(S.note, TM, y - 18, 8.5, "F1", MUTED);
+    const notes = [S.note, cols && C_R < 44 ? "R1, R2…: remito 1, 2… de este PDF." : ""].filter(Boolean).join("  ");
+    if (notes) ops += text(notes, TM, y - 18, 8.5, "F1", MUTED);
     close();
-    return out;
+    return { pages: out, pw: PW, ph: PH };
   }
 
   function buildPdf(pages, opts) {
@@ -160,9 +179,10 @@
     const F1 = 3, F2 = 4, F3 = 5, LG = 6;
     let nextId = 7;
     const hasTable = !!(o.summary && o.summary.rows && o.summary.rows.length);
-    const tableCount = hasTable ? layoutTable({ ...o, remitos: pages.length }, 1, 1).length : 0;
+    const tableCount = hasTable ? layoutTable({ ...o, remitos: pages.length }, 1, 1).pages.length : 0;
     const pageTotal = pages.length + tableCount;
-    const tableContents = hasTable ? layoutTable({ ...o, remitos: pages.length }, pages.length + 1, pageTotal) : [];
+    const tbl = hasTable ? layoutTable({ ...o, remitos: pages.length }, pages.length + 1, pageTotal) : { pages: [], pw: A4W, ph: A4H };
+    const tableContents = tbl.pages;
 
     const plan = [];
     for (const p of pages) { plan.push({ type: "img", p, pageId: nextId, contId: nextId + 1, imgId: nextId + 2 }); nextId += 3; }
@@ -215,7 +235,7 @@
       } else {
         const bytes = latin1(e.content);
         startObj(e.pageId);
-        push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + f(A4W) + " " + f(A4H) + "] /Resources << " + fonts +
+        push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + f(tbl.pw) + " " + f(tbl.ph) + "] /Resources << " + fonts +
              (o.logo ? " /XObject << /Lg " + LG + " 0 R >>" : "") + " >> /Contents " + e.contId + " 0 R >>\nendobj\n");
         startObj(e.contId);
         push("<< /Length " + bytes.length + " >>\nstream\n"); push(bytes); push("\nendstream\nendobj\n");

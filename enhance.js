@@ -238,8 +238,8 @@
   }
 
   // ---------- Realce probado con remitos reales ----------
-  // Es el "Color mejorado" de las versiones anteriores (afinado con fotos reales de remitos): la lectura de cantidades
-  // (Lectura.findTable) encuentra mejor los renglones punteados con este contraste. Por canal (R, G, B):
+  // Es el "Color mejorado" de las versiones anteriores (afinado con fotos reales de remitos): con este contraste se
+  // ven bien los renglones punteados y los números escritos a mano. Por canal (R, G, B):
   //   1) aplana la luz con un mapa por bloques (percentil 70, dilatado para no oscurecer sellos o manchas de tinta),
   //   2) blancos más blancos y negros más oscuros (curva común), 3) nitidez leve.
   function illuminationMap(lum, w, h, B) {
@@ -337,8 +337,8 @@
     return img;
   }
 
-  // "Color mejorado": el realce probado + limpieza del color (no toca el gris de cada punto, así la lectura de
-  // cantidades ve exactamente lo mismo): el papel queda blanco sin manchitas de colores y la tinta, más viva.
+  // "Color mejorado": el realce probado + limpieza del color (no toca el gris de cada punto, así el contraste es
+  // exactamente el probado): el papel queda blanco sin manchitas de colores y la tinta, más viva.
   function magicColor(img) {
     provenEnhance(img);
     const { data, width: w, height: h } = img;
@@ -352,7 +352,7 @@
       const y = Y[p];
       const k = y >= 245 ? 0 : y <= 190 ? SAT : SAT * (245 - y) / 55;
       let r = Math.round(clamp255(y + Cr[p] * k)), b = Math.round(clamp255(y + Cb[p] * k));
-      // el verde se calcula para que el gris (como lo mide la lectura: 77·R + 150·G + 29·B) quede exactamente igual
+      // el verde se calcula para que el gris (77·R + 150·G + 29·B) quede exactamente igual
       let g = Math.round((256 * y + 128 - 77 * r - 29 * b) / 150);
       if (g < 0 || g > 255) { r = g = b = y; }                       // fuera de rango: ese punto queda gris
       data[i] = r; data[i + 1] = g; data[i + 2] = b;
