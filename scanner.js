@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const APP_VERSION = "8.6";
+  const APP_VERSION = "8.7";
   const COMPANY = "LAG PANIFICADOS SRL";
   const $ = (id) => document.getElementById(id);
 
@@ -159,13 +159,28 @@
   }
 
   // ---------- Recuadro en vivo de la hoja ----------
-  let stable = 0, pillState = "";
+  // El recuadro siempre es la hoja vista en perspectiva: 4 lados rectos con forma de rectángulo (crop.js descarta
+  // cualquier otra figura). Se suaviza entre cuadros para que no tiemble, y si un cuadro sale sin hoja se mantiene
+  // el anterior un momento (así no parpadea).
+  let stable = 0, pillState = "", liveQuad = null, liveMiss = 0;
   function setPill(state) {
     if (pillState === state) return;
     pillState = state;
     detectPill.hidden = !state;
     detectPill.className = "pill" + (state === "ok" ? " ok" : "");
     detectPill.textContent = state === "ok" ? "Hoja detectada · lista para sacar la foto" : state === "search" ? "Buscando la hoja…" : "";
+  }
+
+  function smoothQuad(quad) {
+    if (!quad) {
+      if (++liveMiss >= 2) liveQuad = null;
+      return liveQuad;
+    }
+    liveMiss = 0;
+    const diag = Math.hypot(quad[2].x - quad[0].x, quad[2].y - quad[0].y);
+    const near = liveQuad && quad.every((p, i) => Math.hypot(p.x - liveQuad[i].x, p.y - liveQuad[i].y) < diag * 0.06);
+    liveQuad = near ? quad.map((p, i) => ({ x: liveQuad[i].x * 0.45 + p.x * 0.55, y: liveQuad[i].y * 0.45 + p.y * 0.55 })) : quad;
+    return liveQuad;
   }
 
   function drawLive(quad) {
@@ -179,11 +194,23 @@
     const vw = video.videoWidth, vh = video.videoHeight;
     const sc = Math.min(cw / vw, ch / vh);
     const ox = (cw - vw * sc) / 2, oy = (ch - vh * sc) / 2;
+    const pts = quad.map((p) => ({ x: ox + p.x * sc, y: oy + p.y * sc }));
+    // afuera de la hoja, un velo oscuro (se ve bien qué parte queda)
+    ctx.fillStyle = "rgba(0,0,0,.28)";
     ctx.beginPath();
-    quad.forEach((p, i) => { const x = ox + p.x * sc, y = oy + p.y * sc; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.rect(0, 0, cw, ch);
+    pts.slice().reverse().forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
     ctx.closePath();
-    ctx.fillStyle = "rgba(46,158,91,.14)"; ctx.fill();
+    ctx.fill("evenodd");
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.fillStyle = "rgba(46,158,91,.10)"; ctx.fill();
     ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.strokeStyle = "#2ee06b"; ctx.stroke();
+    for (const p of pts) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff"; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#2ee06b"; ctx.stroke();
+    }
     setPill("ok");
   }
 
@@ -191,12 +218,12 @@
     try {
       if (!suspended && autoCropChk.checked && video.videoWidth && !document.hidden) {
         if (!grabbing) {
-          const quad = detectQuad(video, video.videoWidth, video.videoHeight);
+          const quad = smoothQuad(detectQuad(video, video.videoWidth, video.videoHeight));
           stable = quad ? stable + 1 : 0;
           drawLive(quad);
         }
       } else {
-        stable = 0;
+        stable = 0; liveQuad = null;
         drawLive(null);
       }
       watchCamera();
@@ -229,47 +256,12 @@
   }
   const imageDataOf = (c) => c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height);
 
+  // Filtros estilo escáner de oficina (enhance.js): iluminación pareja, sin ruido, contraste y nitidez.
   function applyFilter(canvas, mode) {
     if (mode === "color") return;
-    const ctx = canvas.getContext("2d");
-    const w = canvas.width, h = canvas.height;
-    const img = ctx.getImageData(0, 0, w, h);
-    if (mode === "mejorado") { Enhance.enhance(img); ctx.putImageData(img, 0, 0); return; }
-    const d = img.data;
-    const gray = new Uint8ClampedArray(w * h);
-    for (let i = 0, p = 0; i < d.length; i += 4, p++) gray[p] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
-    if (mode === "gris") {
-      let min = 255, max = 0;
-      for (let p = 0; p < gray.length; p++) { if (gray[p] < min) min = gray[p]; if (gray[p] > max) max = gray[p]; }
-      const range = Math.max(1, max - min);
-      for (let i = 0, p = 0; i < d.length; i += 4, p++) {
-        const v = ((gray[p] - min) * 255) / range;
-        d[i] = d[i + 1] = d[i + 2] = v;
-      }
-    } else {   // documento: blanco y negro con umbral adaptativo
-      const W = w + 1;
-      const integral = new Float64Array(W * (h + 1));
-      for (let y = 1; y <= h; y++) {
-        let rowSum = 0;
-        for (let x = 1; x <= w; x++) {
-          rowSum += gray[(y - 1) * w + (x - 1)];
-          integral[y * W + x] = integral[(y - 1) * W + x] + rowSum;
-        }
-      }
-      const r = Math.max(8, Math.floor(Math.min(w, h) / 16));
-      const t = 0.92;
-      for (let y = 0; y < h; y++) {
-        const y1 = Math.max(0, y - r), y2 = Math.min(h - 1, y + r);
-        for (let x = 0; x < w; x++) {
-          const x1 = Math.max(0, x - r), x2 = Math.min(w - 1, x + r);
-          const area = (x2 - x1 + 1) * (y2 - y1 + 1);
-          const sum = integral[(y2 + 1) * W + (x2 + 1)] - integral[y1 * W + (x2 + 1)] - integral[(y2 + 1) * W + x1] + integral[y1 * W + x1];
-          const v = gray[y * w + x] * area < sum * t ? 0 : 255;
-          const i = (y * w + x) * 4;
-          d[i] = d[i + 1] = d[i + 2] = v;
-        }
-      }
-    }
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    Enhance.apply(img, mode);
     ctx.putImageData(img, 0, 0);
   }
 
@@ -305,13 +297,15 @@
     } finally { URL.revokeObjectURL(url); }
   }
 
-  // Recorta el papel (con perspectiva corregida) y aplica el modo de imagen elegido.
+  // Recorta la hoja y aplica el modo de imagen elegido. El recorte (crop.js) busca la hoja en una copia chica, mide
+  // de nuevo los bordes en la foto grande, corrige la perspectiva y aplana la hoja si está curvada. La salida es
+  // siempre un rectángulo con la proporción real de la hoja.
   async function buildPage(source, mode, autoCrop) {
     const full = fitCanvas(source, START_SIDE);
     let work, cropped = false;
     if (autoCrop) {
       const quad = detectQuad(full, full.width, full.height);
-      if (quad) { work = canvasFromImageData(Crop.warp(imageDataOf(full), quad, MAX_SIDE)); cropped = true; }
+      if (quad) { work = canvasFromImageData(Crop.process(imageDataOf(full), quad, MAX_SIDE).img); cropped = true; }
       else work = fitCanvas(full, MAX_SIDE);
     } else work = fitCanvas(full, MAX_SIDE);
     await sleep(0);

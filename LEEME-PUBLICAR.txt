@@ -1,5 +1,44 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.6
+ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.7
 =======================================================
+
+NOVEDADES v8.7 · RECORTE Y FILTROS COMO UN ESCÁNER DE OFICINA (estilo CamScanner)
+- RECORTE DE LA HOJA (recuadro verde)
+  · Ahora la página busca los 4 BORDES RECTOS de la hoja (antes buscaba las 4 puntas). El recuadro es SIEMPRE un
+    rectángulo (visto en perspectiva): 4 lados rectos con forma de hoja. Nunca un polígono raro. Si lo que ve la
+    cámara no tiene forma de hoja, no recorta y dice "Buscando la hoja…".
+  · Un dedo o una sombra sobre una esquina ya no deforman el recorte: la esquina sale del cruce de los bordes.
+  · Encuentra la hoja también sobre una mesa clara (poco contraste), con la sombra de la mano o con un brillo.
+  · Los bordes se vuelven a medir en la foto grande, con mucha precisión, y el recorte entra un pelito hacia
+    adentro: no queda ninguna raya del fondo.
+  · Si la hoja está curvada (sostenida con la mano, doblada), se aplana: las líneas de la tabla quedan derechas.
+  · La perspectiva se corrige y la hoja sale con su proporción real (remito de LAG; también A4 y oficio).
+  · Si una esquina quedó afuera de la foto, recorta igual, derecho con la hoja, y lo que falta queda en blanco.
+  · Una foto que ya viene recortada (por ejemplo, de CamScanner) o una foto sin hoja NO se recortan.
+  · El recuadro en vivo es más estable (no tiembla), marca las 4 esquinas y oscurece lo que queda afuera.
+- FILTROS ("Modo de imagen")
+  · Todos (menos "Color original") empiezan emparejando la luz: se calcula cuánta luz le llega a cada zona de la
+    hoja y se compensa. Desaparecen las sombras, las manchas de luz y el tono amarillento: el papel queda blanco
+    parejo en toda la hoja.
+  · Reducción de ruido: el papel liso queda limpio (sin granitos ni manchitas de colores de las fotos con poca
+    luz) y las letras mantienen sus bordes.
+  · "Color mejorado" (el de siempre): negros más negros, papel blanco puro, tinta azul y sellos más vivos y
+    letras más nítidas.
+  · "Escala de grises": lo mismo, sin color.
+  · "Documento (blanco y negro)": cada zona de la hoja usa su propio umbral, así una parte más oscura no queda
+    manchada. Tinta negra y papel blanco; los trazos tenues (líneas punteadas, lápiz) no se pierden: quedan en
+    gris. Sin puntitos sueltos.
+- LECTURA DE CANTIDADES: con el recorte nuevo la tabla del remito se encuentra más seguido. En las pruebas, con
+  "Color mejorado" salieron exactas las filas escritas en 43 de 46 fotos (antes, 24 de 46). Para leer las
+  cantidades conviene dejar "Color mejorado": en "Documento (blanco y negro)" la tabla se encuentra menos seguido
+  (31 de 46; el blanco y negro anterior, 28 de 46).
+- Probado con 46 fotos de remitos ARMADAS POR COMPUTADORA (no son fotos reales): madera, mesa oscura, mesa clara,
+  tela, sombra de la mano, brillo, ruido, hoja curvada, dedo sobre una esquina, en perspectiva, girada, apaisada,
+  con una esquina afuera del cuadro. Encontró la hoja en las 46 (antes en 33) y la esquina queda, en promedio,
+  a 0,4 % de la diagonal de la hoja (antes 4 %). Conviene probarlo con remitos reales antes de usarlo a diario.
+- El Atajo «LAG Cantidades» NO cambia. No hace falta volver a publicar las reglas de Firestore ni el puente de
+  Google.
+- CAMBIARON: crop.js, enhance.js, scanner.js, index.html, sw.js.
+
 
 NOVEDADES v8.6 · FOTOS SACADAS CON EL CELULAR (hoja arrugada, torcida o en perspectiva)
 - Problema: con una foto sacada con el celular (remito de Cook Master, hoja arrugada y sostenida con la mano) la

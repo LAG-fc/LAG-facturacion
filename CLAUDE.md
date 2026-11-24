@@ -62,6 +62,24 @@ There are two kinds of modules.
   - `lotes.js` owns the "PDF guardados" side panel and the lote dialog (photo viewer + reception table + send/download/delete). It exposes `window.Lotes.saveBatch`, which `scanner.js` calls from "Guardar PDF".
   - `oc.js` is the Facturación tab and is independent of the Remitos tab. Switching to it turns off the camera through `setActive(false)`.
 
+### Paper crop and filters (v8.7, CamScanner-style)
+
+`crop.js` (`window.Crop`) finds and straightens the sheet. The owner's rule: the frame is ALWAYS a rectangle (seen in perspective), never an arbitrary polygon.
+
+- `detectPaper(img)` runs on a ≤480 px copy (live loop every 400 ms and once per capture). It finds Sobel edges, then a Hough transform with polarity (each line remembers its bright side), and pairs near-parallel lines into quads. Corners are line intersections, so a finger or shadow on a corner does not matter.
+  - Shape check `rectShape`: convex, angles 60–120°, opposite sides ratio ≥ 0.55.
+  - Each side needs a bright-inside/dark-outside step along ≥ 40 % of it, and its outside band (70th percentile) darker than the inside paper by ≥ 10. This rejects printed table lines, already-cropped scans and photos without paper.
+  - Image borders count as sides (sheet bigger than the frame), at most 2. Corners may fall up to 10 % outside the frame; `warp` fills that part with white.
+- `process(img, quad, maxSide)` runs on the full-res photo. `refineQuad` re-measures each side with perpendicular profiles, picks the continuous edge with RANSAC (text strokes are rejected), fits a line or a quadratic (curved sheet), intersects them in 2 passes and insets ~0.2 %. Then `aspectRatio` (Zhang–He with phone focal length; snaps to remito 0.83 ±9 %, A4, oficio) and `warp` (homography + boundary-blend dewarp of curved edges).
+- Synthetic test bench: remito scenes generated in Python (backgrounds, perspective, curvature, shadow, glare, finger, noise) with ground-truth corners, run in Playwright, plus `Lectura.findTable` on the output. It lived in the session scratchpad, not in the repo.
+
+`enhance.js` (`window.Enhance.apply(img, mode)`, modes `mejorado` | `gris` | `documento` | `color`):
+
+- `flatten`: per-channel background map (85th percentile per block, content blocks inpainted, smoothed) and division. This removes shadows and color cast.
+- Edge-preserving luma denoise and chroma blur.
+- `mejorado`/`gris`: tone curve (black point at the 0.5th percentile, paper → 255), saturation boost on ink, unsharp mask.
+- `documento`: Sauvola (k = 0.2) with a short ramp below the threshold, floored by the gray tone curve so faint dotted lines survive. `Lectura.findTable` finds the table less often in `documento` than in `mejorado`; keep `mejorado` as the default.
+
 ### Generated data files
 
 `logo-pdf.js` (`window.LOGO_PDF`, a JPEG in base64) is single-line generated data. Don't open it whole or edit it by hand.
