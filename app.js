@@ -2,7 +2,7 @@
 // (Remitos, Facturas, Enviar mails), avisos y preguntas, y un canal de eventos para que los módulos se avisen cambios.
 (() => {
   "use strict";
-  const APP_VERSION = "9.0";
+  const APP_VERSION = "9.1";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -134,8 +134,8 @@
     try {
       const res = await fetch(url + (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(key), { redirect: "follow" });
       const out = await res.json();
-      if (out.ok && (out.version || 0) >= 5) say("Conexión correcta ✔ (puente v" + out.version + ", mails a " + out.destinatario + ")", true);
-      else if (out.ok) say("Conecta, pero el puente es de una versión anterior: actualizalo (INSTRUCCIONES-PUENTE.txt).", false);
+      if (out.ok && (out.version || 0) >= 6) say("Conexión correcta ✔ (puente v" + out.version + ", mails a " + out.destinatario + ")", true);
+      else if (out.ok) say("Conecta, pero el puente es la versión " + (out.version || "anterior") + ": actualizalo a la 6 (INSTRUCCIONES-PUENTE.txt).", false);
       else say(out.error === "Clave incorrecta" ? "La clave no coincide con la del puente." : "El puente respondió: " + out.error, false);
     } catch (e) { say("No se pudo conectar. Revisá internet, la dirección y que el acceso sea “Cualquier persona”.", false); }
   });

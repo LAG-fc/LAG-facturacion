@@ -294,7 +294,7 @@
     $("lotCount").textContent = esperados ? "· " + (cur.paginas || 0) + " de " + esperados + " remitos" : "";
     $("lotCount").className = esperados && (cur.paginas || 0) !== esperados ? "warn-txt" : "";
     $("lotDest").textContent = A.bridgeReady()
-      ? "«Confirmar» compara la tabla con el Excel de despachos y guarda el PDF (remitos + tabla) en Mi unidad / " + P.folderPath(work.oc || "número", periodo, cli || (rec && rec.cliente)) + "."
+      ? "«Confirmar» compara la tabla con el Excel de despachos y guarda el PDF (remitos + tabla) en Mi unidad / " + P.folderPath(cli || (rec && rec.cliente) || "cookmaster", periodo) + "."
       : "El puente a Google no está configurado en este dispositivo (Ajustes): solo se puede descargar el PDF.";
     fillHead();
   }
@@ -694,7 +694,7 @@
       built = await buildPdfOf(pdfRows, opts);
       if (built.pdf.size > 35 * 1024 * 1024) throw new Error("El PDF pesa " + (built.pdf.size / 1048576).toFixed(1) + " MB: es demasiado grande. Dividí el lote en dos.");
       setBusy(true, "Subiendo el PDF a Drive…");
-      const up = await window.Puente.call({ action: "subir", tipo: "remitos", oc: work.oc, cliente, anio: periodo.year, nombre: built.name, pdf: await A.blobToBase64(built.pdf) }, 240000);
+      const up = await window.Puente.subir({ tipo: "remitos", oc: work.oc, cliente, periodo, nombre: built.name, pdf: await A.blobToBase64(built.pdf) });
       const key = F.unitKey(cliente, work.oc, periodo);
       const despTot = o.cmp && o.cmp.desp && o.cmp.rec ? o.cmp.rec.items.map((x, i) => ({ nombre: x.short || x.desc, total: o.cmp.desp.qty[i] || 0 })).filter((x) => x.total) : [];
       await U.update(key, {

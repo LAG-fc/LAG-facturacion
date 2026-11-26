@@ -12,7 +12,7 @@
   const money = (v) => "$ " + O.fmtMoney(v);
   const RATES = [10.5, 21, 27, 0];
   const listEl = $("factList"), mainEl = $("factMain");
-  let filter = "pendientes", selKey = "", pending = null, busy = false;   // pending: factura leída que todavía no se guardó
+  let filter = "actual", selKey = "", pending = null, busy = false;   // pending: factura leída que todavía no se guardó
   const blobs = new Map();                                                 // clave de la unidad -> PDF de la factura (para WhatsApp)
   const Dt = () => window.Datos;
 
@@ -26,8 +26,9 @@
     return Dt().units().filter((u) => u.started && !u.oc.missing);
   }
   function renderList(list) {
-    const show = list.filter((u) => filter === "todas" || u.progreso.pasos[1].estado !== "hecho" || u.key === selKey);
-    if (!show.length) { listEl.innerHTML = '<p class="hint" style="padding:6px 6px 10px">' + (list.length ? "No quedan facturas pendientes ✔" : "Todavía no hay OC leídas de Drive.") + "</p>"; return; }
+    const today = new Date();
+    const show = list.filter((u) => u.key === selKey || (filter === "todas") || (filter === "actual" ? F.esActual(u, today) : u.progreso.pasos[1].estado !== "hecho"));
+    if (!show.length) { listEl.innerHTML = '<p class="hint" style="padding:6px 6px 10px">' + (!list.length ? "Todavía no hay OC leídas de Drive." : filter === "actual" ? "No hay OC de este período." : "No quedan facturas pendientes ✔") + "</p>"; return; }
     let h = "", last = "";
     show.forEach((u) => {
       const g = P.MESES[u.mes - 1] + " " + u.anio + " · " + F.CLIENTES[u.cliente].nombre;
@@ -52,7 +53,9 @@
     const list = units();
     if (!selKey || !list.some((u) => u.key === selKey)) {
       const saved = (() => { try { return localStorage.getItem("factSel") || ""; } catch (e) { return ""; } })();
-      const pick = list.find((u) => u.key === saved) || list.find((u) => u.progreso.pasos[1].estado === "listo") || list.find((u) => u.progreso.pasos[1].estado !== "hecho") || list[0];
+      const today = new Date(), now = list.filter((u) => F.esActual(u, today));
+      const pick = (filter !== "actual" && list.find((u) => u.key === saved)) || now.find((u) => u.progreso.pasos[1].estado === "listo") || now.find((u) => u.progreso.pasos[1].estado !== "hecho") || now[0] ||
+        list.find((u) => u.key === saved) || list.find((u) => u.progreso.pasos[1].estado === "listo") || list[0];
       selKey = pick ? pick.key : "";
     }
     renderList(list);
@@ -250,7 +253,7 @@
       neto: inv.neto != null ? inv.neto : null, iva: inv.iva || 0, ivas: inv.ivas || [], total: inv.total, sign: inv.sign, asociado: inv.asociado || "", receptor: inv.receptor || "", emisor: inv.emisor || "", descripcion: desc, at: Date.now() };
     try {
       let s = step("Guardando la factura en la carpeta de la OC en Drive…");
-      const up = await window.Puente.call({ action: "subir", tipo: "factura", oc: u.oc.numero, cliente: u.cliente, anio: u.periodo.year, nombre: invoiceFileName(u, inv, pending.file), pdf: await A.blobToBase64(pending.file) }, 240000);
+      const up = await window.Puente.subir({ tipo: "factura", oc: u.oc.numero, cliente: u.cliente, periodo: u.periodo, nombre: invoiceFileName(u, inv, pending.file), pdf: await A.blobToBase64(pending.file) });
       Object.assign(fact, { id: up.id, nombre: up.nombre, url: up.url, ruta: up.ruta });
       s.ok("Factura en Drive: " + up.ruta + "/" + up.nombre + (up.existente ? " (ya estaba)" : ""));
       await U.update(u.key, { cliente: u.cliente, oc: u.oc.numero, periodo: u.periodo, factura: fact, envio: gl ? "whatsapp" : pending.envio, planilla: { fila: 0 } });

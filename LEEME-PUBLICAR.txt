@@ -1,5 +1,33 @@
-FACTURACIÓN LAG · LAG PANIFICADOS SRL — versión 9.0
+FACTURACIÓN LAG · LAG PANIFICADOS SRL — versión 9.1
 ====================================================
+
+NOVEDADES v9.1 · CARPETAS POR PERÍODO Y SOLO LO QUE TOCA FACTURAR HOY
+- ⚠ OBLIGATORIO: ACTUALIZAR EL PUENTE DE GOOGLE a la versión 6 (puente-google/Codigo.gs). Son los mismos pasos de
+  siempre (INSTRUCCIONES-PUENTE.txt): pegar el código nuevo, volver a poner tu clave en la línea CLAVE, guardar y
+  publicar una "Nueva versión" (Implementar > Gestionar implementaciones > lápiz > Nueva versión). No hace falta
+  volver a dar permisos ni tocar las reglas de Firebase.
+  Hasta que lo actualices, la página lee Drive igual, pero NO guarda PDF (avisa que falta el puente v6), así ningún
+  archivo queda en la carpeta equivocada.
+- CARPETAS NUEVAS: los remitos y las facturas se guardan en
+      Mi unidad / OC-<año> / <Cliente> / <MES> / <período de facturación>
+  · Cook Master: OC-2026 / Cook Master / NOVIEMBRE / 1ª quincena (1 al 15)   y   … / 2ª quincena (16 al 30)
+  · Grupo L:     OC-2026 / Grupo L / NOVIEMBRE / Semana 23 al 28
+  Todas las OC del período van juntas en esa carpeta; cada archivo lleva el número de OC en el nombre
+  (REMITOS_93032_1_al_15.pdf, factura …_OC93032.pdf). Las carpetas anteriores no se tocan y se siguen leyendo.
+- INICIO: muestra solo lo que corresponde facturar HOY:
+  · Cook Master se factura el 15 (1ª quincena) y el último día del mes (2ª quincena). Del 15 al 29 se ven las tareas
+    de la 1ª quincena; desde el último día del mes hasta el 14 del mes siguiente, las de la 2ª quincena. Así, cuando
+    toca facturar la 2ª quincena, solo aparecen las tareas de ese período.
+  · Grupo L: la semana de lunes a sábado en la que estás (aunque todavía no esté su Excel en Drive).
+  · Arriba dice qué período toca de cada cliente y qué día se factura. Botón nuevo "Buscar OC en Drive".
+  · Las OC ya completas del período se ocultan ("Mostrar las OC completas" para verlas).
+- REMITOS: la lista de OC para escanear trae solo las del período a facturar que todavía no tienen el PDF en Drive.
+  Para otra OC u otro período queda la opción "Otra OC u otro período (escribir la OC a mano)…".
+- FACTURAS y ENVIAR MAILS: arrancan mostrando "Este período"; con "Pendientes" / "Todas" (o "Todos") se ven los
+  anteriores.
+- CAMBIARON: puente-google/Codigo.gs, puente-google/INSTRUCCIONES-PUENTE.txt, index.html, styles.css, app.js,
+  drive.js, inicio.js, scanner.js, lotes.js, facturas.js, mails.js, flujo.js, period.js, sw.js, LEEME-PUBLICAR.txt.
+
 
 NOVEDADES v9.0 · PÁGINA NUEVA: INICIO CON 3 BOTONES Y TODO EL FLUJO CONECTADO CON DRIVE
 - ⚠ PASOS OBLIGATORIOS (una sola vez, en este orden). Hasta hacerlos, la página nueva no puede leer Drive:

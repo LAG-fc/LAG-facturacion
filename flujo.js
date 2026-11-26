@@ -50,7 +50,8 @@
 
   // ---------- Períodos de cada OC ----------
   // weeklies: Excel semanales de Grupo L del mes (GrupoL.parseWeekly)
-  function periodsFor(cliente, anio, mes, weeklies) {
+  // today: con Grupo L se agrega la semana en curso aunque todavía no esté su Excel
+  function periodsFor(cliente, anio, mes, weeklies, today) {
     if (cliente === "cookmaster") return [P.quincena(anio, mes, 1), P.quincena(anio, mes, 2)];
     const out = [], seen = new Set(), last = P.lastDay(anio, mes);
     for (const w of weeklies || []) {
@@ -62,7 +63,28 @@
       const p = P.range(f(a), f(b), "semanal", "semana del Excel");
       if (!seen.has(P.id(p))) { seen.add(P.id(p)); out.push(p); }
     }
+    if (today) {
+      const w = P.semanaActual(today);
+      P.splitByMonth(w.desde, w.hasta, "semanal", "semana en curso").forEach((p) => {
+        if (p.year !== anio || p.month !== mes) return;
+        const r = { desde: P.startOf(p), hasta: P.endOf(p) };
+        if (!out.some((x) => P.overlaps(r, { desde: P.startOf(x), hasta: P.endOf(x) }))) out.push(p);
+      });
+    }
     return out.sort((x, y) => P.id(x) < P.id(y) ? -1 : 1);
+  }
+  // ¿La unidad corresponde al período a facturar hoy? Cook Master: la quincena de P.quincenaActual; Grupo L: la semana
+  // (lunes a sábado) de hoy.
+  function esActual(unit, today) {
+    const p = unit.periodo; if (!p) return false;
+    if (unit.cliente === "cookmaster") return P.same(p, P.quincenaActual(today));
+    return P.overlaps({ desde: P.startOf(p), hasta: P.endOf(p) }, P.semanaActual(today));
+  }
+  // Texto del período a facturar hoy de cada cliente
+  function periodoActual(cliente, today) {
+    if (cliente === "cookmaster") { const q = P.quincenaActual(today); return { periodo: q, texto: q.label + " de " + P.MESES[q.month - 1].toLowerCase() + " (" + P.text(q) + "/" + q.month + ")", factura: (q.from === 1 ? 15 : q.to) + "/" + q.month }; }
+    const w = P.semanaActual(today);
+    return { semana: w, texto: "semana del " + w.desde.d + "/" + w.desde.m + " al " + w.hasta.d + "/" + w.hasta.m, factura: w.hasta.d + "/" + w.hasta.m };
   }
   const ended = (p, today) => { const e = P.endOf(p), t = today || new Date(); return new Date(e.y, e.m - 1, e.d, 23, 59) < t; };
   const started = (p, today) => { const t = today || new Date(); return new Date(p.year, p.month - 1, p.from) <= t; };
@@ -85,7 +107,7 @@
       for (const cid of Object.keys(CLIENTES)) {
         const c = (m.clientes || {})[cid]; if (!c) continue;
         for (const oc of c.ocs || []) {
-          for (const p of periodsFor(cid, m.anio, m.mes, c.semanas)) {
+          for (const p of periodsFor(cid, m.anio, m.mes, c.semanas, today || new Date())) {
             const k = unitKey(cid, oc.numero, p); if (seen.has(k)) continue; seen.add(k);
             out.push({ key: k, cliente: cid, oc, periodo: p, lote: loteFor(lotes, oc.numero, p), estado: estados[k] || null, anio: m.anio, mes: m.mes, ended: ended(p, today), started: started(p, today) });
           }
@@ -242,6 +264,6 @@
     return { pasos, hechos, total: pasos.length, porcentaje: Math.round(hechos / pasos.length * 100), completa: hechos === pasos.length, siguiente: sig ? sig.id : null };
   }
 
-  const api = { CLIENTES, clienteDe, TOL, SEDE_PLANILLA, sedeLabel, sedeNombre, ocRecord, periodsFor, units, unitKey, loteFor, despachos, qtyByItem, remitosRows, compare, billing, quantities, descripcion, rangoCorto, checkInvoice, filaPlanilla, progress, ended };
+  const api = { CLIENTES, clienteDe, TOL, SEDE_PLANILLA, sedeLabel, sedeNombre, ocRecord, periodsFor, esActual, periodoActual, units, unitKey, loteFor, despachos, qtyByItem, remitosRows, compare, billing, quantities, descripcion, rangoCorto, checkInvoice, filaPlanilla, progress, ended };
   if (typeof module === "object" && module.exports) module.exports = api; else root.Flujo = api;
 })(typeof self !== "undefined" ? self : this);

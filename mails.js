@@ -8,7 +8,7 @@
   const A = window.App, P = window.Period, O = window.OcParse, F = window.Flujo, U = window.UnidadesStore, $ = (id) => document.getElementById(id);
   const esc = A.esc, ICON = (n) => '<svg class="i"><use href="#i-' + n + '"/></svg>';
   const table = $("mailTable"), selEl = $("mailSel"), sendBtn = $("mailSend");
-  let filter = "todos", selected = new Set(), sending = false;
+  let filter = "todos", period = "actual", selected = new Set(), sending = false;
   const fmtDT = (ms) => new Date(ms).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
   // Adjuntos de una unidad lista para mandar (null si falta algo)
@@ -32,8 +32,10 @@
   function chip(cls, text) { return '<span class="chip ' + cls + '">' + esc(text) + "</span>"; }
   function render() {
     if (A.current() !== "mails") return;
-    const all = window.Datos.units().filter((u) => u.started && !u.oc.missing && (filter === "todos" || u.cliente === filter));
+    const today = new Date();
+    const all = window.Datos.units().filter((u) => u.started && !u.oc.missing && (filter === "todos" || u.cliente === filter) && (period === "todos" || window.Flujo.esActual(u, today)));
     $("mailEmpty").hidden = all.length > 0;
+    $("mailEmpty").textContent = period === "actual" ? "No hay OC de este período (tocá «Todos» para ver los anteriores)." : "No hay OC en los meses leídos de Drive.";
     let h = '<thead><tr><th></th><th>OC</th><th>Período</th><th>Remitos</th><th>Tabla</th><th>Factura</th><th>Canal</th><th>Mail</th></tr></thead><tbody>';
     let lastMonth = "";
     for (const u of all) {
@@ -71,6 +73,12 @@
     const c = e.target; if (c.type !== "checkbox") return;
     if (c.checked) selected.add(c.dataset.k); else selected.delete(c.dataset.k);
     refreshBar();
+  });
+  $("mailPeriod").addEventListener("click", (e) => {
+    const b = e.target.closest(".seg-btn"); if (!b) return;
+    period = b.dataset.p;
+    $("mailPeriod").querySelectorAll(".seg-btn").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
+    render();
   });
   $("mailFilter").addEventListener("click", (e) => {
     const b = e.target.closest(".seg-btn"); if (!b) return;

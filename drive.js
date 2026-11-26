@@ -26,10 +26,19 @@
       throw new Error(out.error || "El puente informó un error.");
     }
     if ((out.version || 0) < 5) throw new Error("El puente es de una versión anterior: actualizalo con el código nuevo (INSTRUCCIONES-PUENTE.txt).");
+    bridgeVersion = out.version || 0;
     return out;
   }
+  let bridgeVersion = 0;
+  // Guarda un PDF en Mi unidad / OC-<año> / <Cliente> / <MES> / <período> (puente v6 en adelante).
+  // p: {tipo: "remitos" | "factura", oc, cliente, periodo (objeto Period), nombre, pdf (base64)}
+  async function subir(p) {
+    if (bridgeVersion < 6) await call({ action: "ping" }, 60000);
+    if (bridgeVersion < 6) throw new Error("Para guardar en las carpetas nuevas (OC-año / Cliente / MES / período) hay que actualizar el puente de Google a la versión 6 (INSTRUCCIONES-PUENTE.txt). No se guardó nada.");
+    return call({ action: "subir", tipo: p.tipo, oc: p.oc, cliente: p.cliente, anio: p.periodo.year, mes: p.periodo.month, periodo: P.periodFolder(p.cliente, p.periodo), nombre: p.nombre, pdf: p.pdf }, 240000);
+  }
   const b64ToBuf = (b64) => A.b64ToBytes(b64).buffer;
-  window.Puente = { call, ready: () => A.bridgeReady() };
+  window.Puente = { call, subir, ready: () => A.bridgeReady(), version: () => bridgeVersion };
 
   // ================================================================ archivos guardados en el dispositivo
   let idbP = null;

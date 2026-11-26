@@ -140,6 +140,15 @@ a { color: var(--wine); }
 .ring small { font-size: 10.5px; color: var(--muted); font-weight: 600; }
 .ring.done { background: radial-gradient(closest-side, #fff 76%, transparent 78% 100%), conic-gradient(var(--ok) 100%, #efe7dd 0); }
 .ring.done b { color: var(--ok); }
+.per-now { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 2px; }
+.per-now div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.per-now b { font-weight: 700; }
+.per-now .cli { width: 30px; height: 22px; border-radius: 7px; font-size: 10.5px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.per-now small { color: var(--muted); font-size: 12.5px; }
+.per-now .pn-t { flex: 1 1 220px; min-width: 0; }
+.hero-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.hero-btns .btn.is-busy .i { animation: spin .8s linear infinite; }
+.hero-btns .btn.is-busy::after { display: none; }
 .drive-log { font-size: 13px; line-height: 1.5; color: var(--muted); border-top: 1px dashed var(--line-strong); padding-top: 10px; max-height: 160px; overflow: auto; }
 .drive-log .ok-line { color: var(--ok); font-weight: 600; }
 .drive-log .bad-line { color: var(--danger); }
@@ -842,6 +851,8 @@ body:not(.auth-locked) > #authScreen { display: none; }
 
 /* ---------- Enviar mails / progreso ---------- */
 .mails-card { padding: 16px 18px; }
+.mails-card .sec-head { margin-bottom: 4px; }
+.mails-card .sec-head > div:first-child { flex: 1 1 320px; }
 .prog-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .prog-table th { text-align: left; font-size: 11px; letter-spacing: .07em; color: var(--muted); padding: 9px 10px; background: #fbf8f4; border-bottom: 2px solid var(--wine); white-space: nowrap; position: sticky; top: 0; }
 .prog-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
@@ -894,6 +905,7 @@ body:not(.auth-locked) > #authScreen { display: none; }
   .back-btn:not([hidden]) + .brand .brand-logo { display: none; }
   .hero { padding: 14px 14px; }
   .hero h2 { font-size: 22px; }
+  .hero-btns .btn { flex: 1; min-height: 46px; }
   .ring { width: 72px; height: 72px; } .ring b { font-size: 18px; }
   .oc-cards { grid-template-columns: minmax(0, 1fr); }
   .seg.small-seg { width: 100%; }

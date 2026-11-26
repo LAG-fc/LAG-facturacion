@@ -1,5 +1,5 @@
 // =====================================================================================================================
-// PUENTE DE GOOGLE · LAG PANIFICADOS SRL — versión 5 (para la página v9.0)
+// PUENTE DE GOOGLE · LAG PANIFICADOS SRL — versión 6 (para la página v9.1)
 // =====================================================================================================================
 // Se pega en un proyecto de Google Apps Script (script.google.com) y se implementa como "Aplicación web"
 // (Ejecutar como: Yo · Quién tiene acceso: Cualquier persona). Paso a paso: INSTRUCCIONES-PUENTE.txt.
@@ -7,8 +7,9 @@
 // La página le habla por POST (texto JSON) con {key, action, ...}. Qué hace cada acción:
 //   escanear       Lee "Compartido conmigo / Facturacion / <Mes> / <Cliente>": OC (PDF) y Excel de despachos.
 //   files          Devuelve archivos (en base64), solo de Facturacion o de las carpetas OC-<año> de Mi unidad.
-//   carpetas       Qué hay en la carpeta de cada OC (remitos y facturas ya guardados).
-//   subir          Guarda un PDF (remitos o factura) en Mi unidad / OC-<año> / <Cliente> / OC-<número>.
+//   carpetas       Qué remitos y facturas de cada OC ya están guardados en Mi unidad.
+//   subir          Guarda un PDF (remitos o factura) en Mi unidad / OC-<año> / <Cliente> / <MES> / <período>
+//                  (por ejemplo OC-2026 / Cook Master / NOVIEMBRE / 1ª quincena (1 al 15)).
 //   planillaAgregar  Agrega UNA fila nueva a la planilla de Facturación (nunca borra ni cambia filas existentes).
 //   planillaMarcar   En la fila de una factura, completa "REMITOS ENV" y "FC (MAIL O PORTAL)".
 //   enviarMail     Manda (o deja en borrador) un mail con PDF de Drive adjuntos, solo a los destinatarios de abajo.
@@ -30,7 +31,7 @@ const CONFIG = {
   destinatarios: ["cuentasapagar@cook-master.com.ar"],     // únicos correos a los que el puente puede mandar mails
   remitente: "LAG Panificados SRL"
 };
-const VERSION = 5;
+const VERSION = 6;
 const MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
 
 // ---------------------------------------------------------------------------------------------------- entrada
@@ -174,6 +175,14 @@ function carpetaOc(anio, cliente, oc, crear) {
   const f = crear ? crearCarpeta(c, "OC-" + oc) : hijaCarpeta(c, "OC-" + oc);
   return f ? { folder: f, ruta: "OC-" + anio + "/" + nombreCli + "/OC-" + oc } : null;
 }
+// Carpeta del período de facturación (v6): Mi unidad / OC-<año> / <Cliente> / <MES> / <período>
+function carpetaPeriodo(anio, cliente, mes, periodo, crear) {
+  const root = DriveApp.getRootFolder(), nombreCli = CONFIG.clientes[cliente] || cliente, nombreMes = MESES[mes - 1];
+  const pasos = ["OC-" + anio, nombreCli, nombreMes].concat(periodo ? [periodo] : []);
+  let f = root;
+  for (const n of pasos) { f = crear ? crearCarpeta(f, n) : hijaCarpeta(f, n); if (!f) return null; }
+  return { folder: f, ruta: pasos.join("/") };
+}
 function listarRecursivo(carpeta, ruta, prof, out) {
   archivosDe(carpeta).forEach((a) => { a.ruta = ruta; out.push(a); });
   if (prof <= 0) return;
@@ -181,10 +190,17 @@ function listarRecursivo(carpeta, ruta, prof, out) {
   while (it.hasNext()) { const f = it.next(); if (!f.isTrashed()) listarRecursivo(f, ruta + "/" + f.getName(), prof - 1, out); }
 }
 function carpetas(req) {
-  const res = {}, root = DriveApp.getRootFolder();
+  const res = {}, root = DriveApp.getRootFolder(), porMes = {};
   for (const it of (req.items || []).slice(0, 40)) {
     const oc = String(it.oc || "").replace(/\D+/g, ""); if (!oc) continue;
     const r = { carpeta: false, ruta: "", archivos: [] };
+    // Estructura actual: OC-<año>/<Cliente>/<MES>/<período>. Ahí hay varias OC juntas: se toman las que llevan su número.
+    if (it.mes) {
+      const km = it.anio + "|" + it.cliente + "|" + it.mes;
+      if (!(km in porMes)) { const m = carpetaPeriodo(Number(it.anio), it.cliente, Number(it.mes), "", false), lista = []; if (m) listarRecursivo(m.folder, m.ruta, 2, lista); porMes[km] = m ? { ruta: m.ruta, lista } : null; }
+      const m = porMes[km];
+      if (m) { r.carpeta = true; r.ruta = m.ruta; m.lista.filter((a) => new RegExp("(^|[^0-9])" + oc + "([^0-9]|$)").test(a.name)).forEach((a) => r.archivos.push(a)); }
+    }
     const nueva = carpetaOc(Number(it.anio), it.cliente, oc, false);
     if (nueva) { r.carpeta = true; r.ruta = nueva.ruta; listarRecursivo(nueva.folder, nueva.ruta, 2, r.archivos); }
     const y = hijaCarpeta(root, "OC-" + it.anio), mesF = y && it.mes ? hijaCarpeta(y, MESES[Number(it.mes) - 1]) : null, vieja = mesF ? hijaCarpeta(mesF, "OC-" + oc) : null;
@@ -195,15 +211,18 @@ function carpetas(req) {
 }
 
 // ---------------------------------------------------------------------------------------------------- subir
-// req: {oc, cliente, anio, nombre (sin .pdf), pdf (base64), tipo: "remitos" | "factura"}
+// req: {oc, cliente, anio, mes (1-12), periodo ("1ª quincena (1 al 15)" | "Semana 16 al 21"), nombre (sin .pdf),
+//       pdf (base64), tipo: "remitos" | "factura"}
 function subir(req) {
   const oc = String(req.oc || "").replace(/\D+/g, "");
   if (!oc) throw new Error("Falta el número de OC.");
   if (!CONFIG.clientes[req.cliente]) throw new Error("Cliente desconocido.");
   if (!/^\d{4}$/.test(String(req.anio))) throw new Error("Año inválido.");
+  const mes = Number(req.mes), periodo = String(req.periodo || "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 60);
+  if (!(mes >= 1 && mes <= 12) || !periodo) throw new Error("Falta el mes o el período de facturación (¿la página es de otra versión? Volvé a cargarla).");
   const base = String(req.nombre || "").replace(/\.pdf$/i, "").replace(/[\\/:*?"<>|]+/g, "_").trim();
   if (!base) throw new Error("Nombre de archivo inválido.");
-  const dest = carpetaOc(Number(req.anio), req.cliente, oc, true), carpeta = dest.folder;
+  const dest = carpetaPeriodo(Number(req.anio), req.cliente, mes, periodo, true), carpeta = dest.folder;
   // Si ya existe un archivo con ese nombre: una factura se reutiliza; unos remitos se guardan con (2), (3)… (no se borra nada)
   let nombre = base + ".pdf";
   if (carpeta.getFilesByName(nombre).hasNext()) {

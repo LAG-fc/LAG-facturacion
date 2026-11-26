@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-This is a static PWA called "Facturación LAG" (formerly "Escáner de remitos"), built for LAG Panificados SRL, a small bakery in Argentina. Since v9.0 it is one main screen (Inicio) with three buttons and the list of every purchase order (OC) found in Google Drive. It bills two clients:
+This is a static PWA called "Facturación LAG" (formerly "Escáner de remitos"), built for LAG Panificados SRL, a small bakery in Argentina. Since v9.0 it is one main screen (Inicio) with three buttons and the OCs found in Google Drive. Since v9.1 Inicio (and, by default, Remitos/Facturas/Mails) only shows the **billing period of today** (`Flujo.esActual`): Cook Master's quincena from `Period.quincenaActual` (billed on the 15th and the last day; days 15–29 → 1st quincena, last day to the 14th → 2nd quincena), Grupo L's Monday–Saturday week from `Period.semanaActual` (a unit is created for it even before its Excel exists). It bills two clients:
 
 - **Cook Master:** several OCs per month (one per site: CC, CS/Penal, La Plata, UP 59, UP 60, Alcaidía, others), billed per quincena (one remito per day: 15 or 16). One monthly "Despachos" Excel.
 - **Grupo L:** one OC per month (SAP format), billed per week; one "PEDIDO SEMANAL" Excel per week with 3 products.
 
 The three buttons:
 
-1. **Remitos:** pick OC + period from the Drive list, scan the remitos (CamScanner-style crop + enhance), "Guardar remitos" saves a lote. In the lote dialog the reception grid has an **Excel** column (despachos for that product and period). "Confirmar y guardar en Drive" compares remitos vs. Excel: if equal, builds the PDF (remitos + table) and uploads it to `Mi unidad/OC-<año>/<Cliente>/OC-<n>`; if not, the scanned table is not confirmed and the user enters the real despachos table, which goes into the PDF instead.
+1. **Remitos:** pick OC + period from the Drive list, scan the remitos (CamScanner-style crop + enhance), "Guardar remitos" saves a lote. In the lote dialog the reception grid has an **Excel** column (despachos for that product and period). "Confirmar y guardar en Drive" compares remitos vs. Excel: if equal, builds the PDF (remitos + table) and uploads it to `Mi unidad/OC-<año>/<Cliente>/<MES>/<período>` (`Period.folderPath`/`periodFolder`: "1ª quincena (1 al 15)", "Semana 16 al 21"; all OCs of the period share the folder, file names carry the OC number); if not, the scanned table is not confirmed and the user enters the real despachos table, which goes into the PDF instead.
 2. **Facturas:** billing table per OC + period (quantities from the confirmed table, prices/IVA from the OC). The user uploads the ARCA invoice PDF; the app parses it, checks it against the table, saves it in the OC folder and appends a row to the "Facturación" Google Sheet (Grupo L → 1st sheet, Cook Master → 2nd sheet). Grupo L: send by WhatsApp (Web Share). Cook Master: choose «Portal» or «Mail».
 3. **Enviar mails:** progress table of every OC + period; sends the Cook Master mails (Portal: remitos PDF; Mail: remitos + invoice) and then fills "REMITOS ENV" and "FC (MAIL O PORTAL)" in the sheet.
 
@@ -174,12 +174,12 @@ Per device, in `localStorage`:
 
 Server-side: the user accounts, each user's lotes and each user's `unidades`. Shared truth lives in Drive and the Facturación sheet.
 
-### Google "puente" (bridge) — `puente-google/Codigo.gs` (v5)
+### Google "puente" (bridge) — `puente-google/Codigo.gs` (v6)
 
 A Google Apps Script web app, now kept in this repo (`puente-google/`, not cached by the SW). The owner pastes it into script.google.com, sets `const CLAVE`, runs `autorizar()` once and deploys a "Nueva versión" (INSTRUCCIONES-PUENTE.txt).
 
 - Requests are POSTs with `Content-Type: text/plain` (to avoid a CORS preflight) and a JSON body `{ key, action, ... }`. GET `?key=` is the connection test.
-- Actions: `escanear` (`Compartido conmigo/Facturacion/<MES>/<Cliente>` listings; folder names have trailing spaces, compare with `norm`), `files` (base64; only files under Facturacion or root `OC-<año>`), `carpetas` (contents of the new and the legacy `OC-<año>/<MES>/OC-<n>` folders), `subir` (`OC-<año>/<Cliente>/OC-<n>`; never deletes: remitos get " (2)", an invoice with the same name is reused), `planillaAgregar`, `planillaMarcar`, `enviarMail` (only to `CONFIG.destinatarios`).
+- Actions: `escanear` (`Compartido conmigo/Facturacion/<MES>/<Cliente>` listings; folder names have trailing spaces, compare with `norm`), `files` (base64; only files under Facturacion or root `OC-<año>`), `carpetas` (files of each OC: in `OC-<año>/<Cliente>/<MES>/**` by OC number in the name, plus the v9.0 `OC-<año>/<Cliente>/OC-<n>` and legacy `OC-<año>/<MES>/OC-<n>` folders), `subir` (v6: needs `mes` and `periodo` folder name → `OC-<año>/<Cliente>/<MES>/<periodo>`; the page calls it through `Puente.subir`, which pings first and refuses with a bridge < 6; never deletes: remitos get " (2)", an invoice with the same name is reused), `planillaAgregar`, `planillaMarcar`, `enviarMail` (only to `CONFIG.destinatarios`).
 - The Facturación file is a **Google Sheet** in the Facturacion folder (not an .xlsx). 1st sheet = Grupo L, 2nd = Cook Master (by position; names are not in the repo). Columns are found by header text (`Nº FACT`, `TIPO FACT`, `DESCRIPCIÓN`, `SUBTOTAL`, `IVA`, `FINAL`, `REMITOS ENV`, `FC (MAIL O PORTAL)`, `ESTADO`; the date column has a blank header). Each month is a block closed by a row with the month name in column A and `=SUM(G..:G..)` totals. `planillaAgregar` writes into the first free row of the block whose dates have the right year, or `insertCells` on A:O only (a side table lives from column Q/R) and fixes the `SUM` end, or creates a new month block. It refuses duplicates (same Nº, tipo and total). Never delete or rewrite existing rows.
 - Invoice "TIPO FACT" codes: 001 → `A`, 201 → `eA`, 003 → `NC FC<n>`, 203 → `NC eA<n>` (n = associated invoice), see `FactParse.planillaTipo`.
 - Test `planillaAgregar` in Node with a mocked `SpreadsheetApp` (vm context); test the app with Playwright routing `https://script.google.com/**` to a mock bridge.

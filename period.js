@@ -5,6 +5,12 @@
 //     Sin Excel se usan bloques de 7 días del mes (1–7, 8–14, 15–21, 22–28 y 29–fin de mes).
 // Un período es {mode, from, to, year, month, label} (+ toMonth/toYear si termina en otro mes).
 // El PDF se llama REMITOS_<OC>_<desde>_al_<hasta> (con el mes si el período cruza de mes).
+// Período a facturar HOY (v9.1, periodoActual):
+//   Cook Master se factura el 15 (1.ª quincena) y el último día del mes (2.ª quincena). Entre esas fechas sigue a la
+//   vista la última quincena facturada (para terminar lo que falte): del 15 al 29 → 1.ª quincena del mes; del 30 (o el
+//   último día) al 14 del mes siguiente → 2.ª quincena.
+//   Grupo L se factura por semana: la semana de lunes a sábado en la que está el día de hoy (el domingo cuenta la que
+//   terminó el sábado).
 (function (root) {
   "use strict";
   const lastDay = (y, m) => new Date(y, m, 0).getDate();          // m: 1-12
@@ -49,6 +55,38 @@
   const id = (p) => iso(startOf(p)) + "_" + iso(endOf(p));
   const same = (a, b) => !!(a && b) && id(a) === id(b);
 
+  // Quincena de Cook Master que corresponde facturar hoy
+  function quincenaActual(d) {
+    d = d || new Date();
+    const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
+    if (day < 15) { const pm = new Date(y, m - 2, 1); return quincena(pm.getFullYear(), pm.getMonth() + 1, 2); }
+    if (day >= Math.min(30, lastDay(y, m))) return quincena(y, m, 2);
+    return quincena(y, m, 1);
+  }
+  // Semana de Grupo L (lunes a sábado) en la que está el día de hoy: {desde, hasta}
+  function semanaActual(d) {
+    d = d || new Date();
+    const dow = d.getDay(), back = dow === 0 ? 6 : dow - 1;
+    const lun = new Date(d.getFullYear(), d.getMonth(), d.getDate() - back), sab = new Date(lun.getFullYear(), lun.getMonth(), lun.getDate() + 5);
+    const f = (x) => ({ y: x.getFullYear(), m: x.getMonth() + 1, d: x.getDate() });
+    return { desde: f(lun), hasta: f(sab) };
+  }
+  // ¿Se superponen dos rangos de fechas {desde, hasta}?
+  const k = (f) => f.y * 10000 + f.m * 100 + f.d;
+  const overlaps = (a, b) => k(a.desde) <= k(b.hasta) && k(b.desde) <= k(a.hasta);
+  // Un rango de fechas partido por mes (cada OC de Grupo L es de un mes)
+  function splitByMonth(desde, hasta, mode, label) {
+    const out = [];
+    let a = desde;
+    while (k(a) <= k(hasta)) {
+      const ld = lastDay(a.y, a.m), endK = Math.min(k(hasta), a.y * 10000 + a.m * 100 + ld);
+      const b = { y: Math.floor(endK / 10000), m: Math.floor(endK / 100) % 100, d: endK % 100 };
+      out.push(range(a, b, mode, label));
+      const nx = new Date(b.y, b.m - 1, b.d + 1); a = { y: nx.getFullYear(), m: nx.getMonth() + 1, d: nx.getDate() };
+    }
+    return out;
+  }
+
   const cleanOc = (s) => String(s || "").replace(/\D+/g, "");
   const fileName = (oc, p) => "REMITOS_" + cleanOc(oc) + "_" + (crosses(p) ? p.from + "-" + p.month + "_al_" + p.to + "-" + p.toMonth : p.from + "_al_" + p.to);
   // "1 al 15" · "29/6 al 3/7"
@@ -58,8 +96,16 @@
   const MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
   const monthName = (p) => MESES[p.month - 1];
   const CLIENT_FOLDER = { cookmaster: "Cook Master", grupol: "Grupo L" };
-  // Carpeta en Drive (Mi unidad): OC-<año> / <Cliente> / OC-<número>
-  const folderPath = (oc, p, cliente) => "OC-" + p.year + "/" + (CLIENT_FOLDER[cliente] || "Cliente") + "/OC-" + cleanOc(oc);
+  // Carpeta del período de facturación: "1ª quincena (1 al 15)" (Cook Master) o "Semana 16 al 21" (Grupo L)
+  function periodFolder(cliente, p) {
+    const t = crosses(p) ? p.from + "-" + p.month + " al " + p.to + "-" + p.toMonth : p.from + " al " + p.to;
+    if (cliente === "grupol") return "Semana " + t;
+    if (p.from === 1 && p.to === 15) return "1ª quincena (" + t + ")";
+    if (p.from === 16 && p.to === lastDay(p.year, p.month)) return "2ª quincena (" + t + ")";
+    return "Período " + t;
+  }
+  // Carpeta en Drive (Mi unidad): OC-<año> / <Cliente> / <MES> / <período de facturación>
+  const folderPath = (cliente, p) => "OC-" + p.year + "/" + (CLIENT_FOLDER[cliente] || "Cliente") + "/" + monthName(p) + "/" + periodFolder(cliente, p);
   // "15/11 al 21/11"
   const dateRange = (p) => two(p.from) + "/" + two(p.month) + " al " + two(p.to) + "/" + two(p.toMonth || p.month);
   const greeting = (d) => { const h = (d || new Date()).getHours(); return h < 12 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches"; };
@@ -68,7 +114,7 @@
   const invoiceSubject = (oc, p, nro) => "Factura " + nro + " y remitos OC " + cleanOc(oc) + " – período " + text(p);
   const invoiceBody = (oc, p, nro, d) => greeting(d) + ",\nadjunto la factura " + nro + " y los remitos correspondientes a la OC " + cleanOc(oc) + " (periodo " + dateRange(p) + ").\nSaludos.";
 
-  const api = { forDate, quincena, range, startOf, endOf, crosses, days, id, same, lastDay, fileName, cleanOc, text, monthName, MESES, CLIENT_FOLDER, folderPath, dateRange, greeting, emailSubject, emailBody, invoiceSubject, invoiceBody };
+  const api = { forDate, quincena, quincenaActual, semanaActual, overlaps, splitByMonth, periodFolder, range, startOf, endOf, crosses, days, id, same, lastDay, fileName, cleanOc, text, monthName, MESES, CLIENT_FOLDER, folderPath, dateRange, greeting, emailSubject, emailBody, invoiceSubject, invoiceBody };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.Period = api;
 })(typeof self !== "undefined" ? self : this);

@@ -208,7 +208,7 @@
           </div>
         </div>
 
-        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v9.0</span></p>
+        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v9.1</span></p>
       </section>
     </div>
   </div>
@@ -224,7 +224,7 @@
       <button type="button" id="syncBtn" class="sync-chip" title="Volver a leer Drive"><span class="sync-dot" aria-hidden="true"></span><span id="syncText">Drive</span></button>
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg><span class="hide-sm">Instalar</span></button>
       <button id="settingsBtn" class="btn ghost icon-btn" title="Ajustes" aria-label="Ajustes"><svg class="i"><use href="#i-settings"/></svg></button>
-      <span class="ver hide-sm" id="verTag">v9.0</span>
+      <span class="ver hide-sm" id="verTag">v9.1</span>
       <div class="user-menu" id="userMenu" hidden>
         <button type="button" class="user-btn" id="userBtn" aria-haspopup="true" aria-expanded="false" aria-controls="userPop" title="Tu cuenta">
           <span class="avatar" id="userAvatar">·</span><span class="user-first hide-sm" id="userFirst"></span><svg class="i chev"><use href="#i-chevron"/></svg>
@@ -247,12 +247,16 @@
       <div class="hero-top">
         <div class="hero-txt">
           <p class="kicker" id="homeHello">Hola</p>
-          <h2 id="homeMonth">Tu avance</h2>
+          <h2 id="homeMonth">Para facturar ahora</h2>
+          <div class="per-now" id="homeNow"></div>
           <p class="hint" id="homeSummary">Leyendo Drive…</p>
         </div>
         <div class="ring" id="homeRing" style="--p:0" aria-hidden="true"><b id="homePct">0%</b><small>hecho</small></div>
       </div>
       <div class="progress"><i id="homeBar"></i></div>
+      <div class="hero-btns">
+        <button type="button" class="btn primary" id="homeSync"><svg class="i"><use href="#i-rotate"/></svg><span>Buscar OC en Drive</span></button>
+      </div>
       <div class="drive-log" id="driveLog" role="status" hidden></div>
     </section>
 
@@ -276,15 +280,15 @@
 
     <section class="oc-section" aria-labelledby="ocSecTitle">
       <div class="sec-head">
-        <h2 id="ocSecTitle">Órdenes de compra</h2>
+        <h2 id="ocSecTitle">Órdenes de compra de este período</h2>
         <div class="seg small-seg" id="homeFilter" role="radiogroup" aria-label="Cliente">
           <button type="button" role="radio" class="seg-btn" data-f="todos" aria-checked="true">Todas</button>
           <button type="button" role="radio" class="seg-btn" data-f="cookmaster" aria-checked="false">Cook Master</button>
           <button type="button" role="radio" class="seg-btn" data-f="grupol" aria-checked="false">Grupo L</button>
         </div>
       </div>
-      <div class="month-tabs" id="homeMonths" role="tablist" aria-label="Mes"></div>
       <div class="oc-cards" id="ocCards"></div>
+      <button type="button" class="link-btn" id="homeShowDone" hidden></button>
       <div class="card empty" id="ocEmptyHome" hidden>
         <svg class="i big"><use href="#i-file"/></svg>
         <p id="ocEmptyTitle">Todavía no hay órdenes de compra.</p>
@@ -391,7 +395,8 @@
         <div class="sec-head tight">
           <h2>OC y períodos</h2>
           <div class="seg small-seg" id="factFilter" role="radiogroup" aria-label="Mostrar">
-            <button type="button" role="radio" class="seg-btn" data-f="pendientes" aria-checked="true">Pendientes</button>
+            <button type="button" role="radio" class="seg-btn" data-f="actual" aria-checked="true">Este período</button>
+            <button type="button" role="radio" class="seg-btn" data-f="pendientes" aria-checked="false">Pendientes</button>
             <button type="button" role="radio" class="seg-btn" data-f="todas" aria-checked="false">Todas</button>
           </div>
         </div>
@@ -408,6 +413,10 @@
         <div>
           <h2>Progreso de cada OC</h2>
           <p class="hint">Cook Master: «Portal» manda solo los remitos; «Mail» manda los remitos y la factura. Grupo L no lleva mail: la factura va por WhatsApp.</p>
+        </div>
+        <div class="seg small-seg" id="mailPeriod" role="radiogroup" aria-label="Período">
+          <button type="button" role="radio" class="seg-btn" data-p="actual" aria-checked="true">Este período</button>
+          <button type="button" role="radio" class="seg-btn" data-p="todos" aria-checked="false">Todos</button>
         </div>
         <div class="seg small-seg" id="mailFilter" role="radiogroup" aria-label="Cliente">
           <button type="button" role="radio" class="seg-btn" data-f="todos" aria-checked="true">Todas</button>
@@ -591,7 +600,7 @@
     <div class="row-inline">
       <button type="button" id="driveReset" class="btn ghost small">Volver a leer todo Drive</button>
     </div>
-    <p class="hint">Versión de la página: <b id="verLabel">9.0</b></p>
+    <p class="hint">Versión de la página: <b id="verLabel">9.1</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>

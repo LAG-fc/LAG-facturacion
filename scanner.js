@@ -553,10 +553,12 @@
   const unitLabel = (u) => "OC " + u.oc.numero + " · " + (u.cliente === "grupol" ? "Grupo L" : window.Flujo.sedeLabel(u.oc) || "Cook Master") + " · " + P.text(u.periodo) + "/" + u.periodo.month;
   const manualPeriod = () => P.forDate(settings().periodMode === "quincenal" ? "quincenal" : "semanal", new Date());
 
+  let forcedUnit = "";                 // la que se eligió desde Inicio o Facturas (aunque sea de otro período)
   function fillUnits() {
-    const all = window.Datos ? window.Datos.units() : [];
-    // Se ofrecen las que ya empezaron y todavía no tienen el PDF de remitos en Drive (más la elegida)
-    unitList = all.filter((u) => u.started && !u.oc.missing && (u.progreso.pasos[0].estado !== "hecho" || u.key === settings().unidad));
+    const all = window.Datos ? window.Datos.units() : [], today = new Date();
+    // Solo las OC del período a facturar hoy (quincena de Cook Master / semana de Grupo L) que todavía no tienen el PDF
+    // de remitos en Drive; más la que se haya elegido desde otra sección.
+    unitList = all.filter((u) => !u.oc.missing && ((window.Flujo.esActual(u, today) && u.progreso.pasos[0].estado !== "hecho") || u.key === forcedUnit));
     const groups = { cookmaster: [], grupol: [] };
     unitList.forEach((u) => groups[u.cliente].push(u));
     let h = "";
@@ -564,11 +566,13 @@
       if (!groups[k].length) return;
       h += '<optgroup label="' + name + '">' + groups[k].map((u) => '<option value="' + esc(u.key) + '">' + esc(unitLabel(u)) + (u.lote ? " · ya escaneados" : "") + "</option>").join("") + "</optgroup>";
     });
-    h += '<option value="manual">Otra OC (escribirla a mano)…</option>';
+    if (!unitList.length) h += '<option value="" disabled>No quedan remitos por escanear de este período ✔</option>';
+    h += '<option value="manual">Otra OC u otro período (escribir la OC a mano)…</option>';
     unitSel.innerHTML = h;
     let want = settings().unidad;
+    if (forcedUnit && unitList.some((u) => u.key === forcedUnit)) want = forcedUnit;
     if (!want || (want !== "manual" && !unitList.some((u) => u.key === want))) {
-      const cur = unitList.find((u) => !u.lote && u.cliente === "cookmaster" && P.same(u.periodo, P.forDate("quincenal"))) || unitList.find((u) => !u.lote) || unitList[0];
+      const cur = unitList.find((u) => !u.lote) || unitList[0];
       want = cur ? cur.key : "manual";
     }
     unitSel.value = want;
@@ -613,7 +617,7 @@
   A.on("datos", () => { if (!saving) fillUnits(); });
   A.on("lotes", () => { if (!saving && !suspended) fillUnits(); });
   // Desde Inicio ("Escanear") llega la OC y el período elegidos
-  A.on("view", (e) => { if (e.view === "remitos" && e.params && e.params.unit) { settings().unidad = e.params.unit; A.saveSettings(); fillUnits(); } });
+  A.on("view", (e) => { if (e.view === "remitos" && e.params && e.params.unit) { forcedUnit = e.params.unit; settings().unidad = e.params.unit; A.saveSettings(); fillUnits(); } });
 
   // ---------- Guardar remitos ----------
   // Las fotos se guardan como un lote (lotes.js) con la OC y el período elegidos: en la cuenta si hay sesión, si no
