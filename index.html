@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Escáner de Remitos · LAG Panificados</title>
-  <meta name="description" content="Escaneá los remitos con la cámara, guardalos en tu cuenta y completá la tabla de recepciones desde cualquier dispositivo.">
+  <title>Facturación · LAG Panificados</title>
+  <meta name="description" content="Remitos, facturas y mails de cada orden de compra de LAG Panificados, conectados con Google Drive.">
   <meta name="theme-color" content="#741420">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Remitos">
+  <meta name="apple-mobile-web-app-title" content="LAG Facturación">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -52,6 +52,13 @@
     <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
     <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
+    <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l3-2 3 2 2-2 2 2 3-2 3 2V2l-3 2-3-2-2 2-2-2-3 2z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-sheet" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
   </svg>
 
   <!-- ===== Ingreso y registro de usuarios (auth.js) ===== -->
@@ -61,7 +68,7 @@
         <div class="auth-logo-wrap"><img class="auth-logo" src="logo.png" alt="LAG Panificados SRL"></div>
         <div class="auth-brand-copy">
           <p class="auth-kicker">Sistema de gestión</p>
-          <h2>Remitos y facturación</h2>
+          <h2>Facturación LAG</h2>
           <p class="auth-lead">Escaneo de remitos, órdenes de compra y control de la facturación, en un solo lugar.</p>
           <ul class="auth-features">
             <li><svg class="i"><use href="#i-camera"/></svg><span>Remitos escaneados y PDF listos para enviar</span></li>
@@ -201,23 +208,23 @@
           </div>
         </div>
 
-        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v8.8</span></p>
+        <p class="auth-foot">LAG Panificados SRL · <span class="auth-ver">v9.0</span></p>
       </section>
     </div>
   </div>
 
-  <header class="topbar">
-    <div class="brand">
+  <!-- ===== Aplicación ===== -->
+  <header class="topbar" id="topbar">
+    <button type="button" class="btn ghost icon-btn back-btn" id="backBtn" hidden aria-label="Volver al inicio" title="Volver al inicio"><svg class="i"><use href="#i-left"/></svg></button>
+    <a class="brand" href="#inicio" id="brandLink" aria-label="Inicio">
       <img class="brand-logo" src="logo.png" alt="LAG Panificados SRL">
-      <div class="brand-text">
-        <h1>Escáner de Remitos</h1>
-        <span>LAG PANIFICADOS SRL</span>
-      </div>
-    </div>
+      <div class="brand-text"><h1 id="viewTitle">Facturación</h1><span>LAG PANIFICADOS SRL</span></div>
+    </a>
     <div class="top-actions">
+      <button type="button" id="syncBtn" class="sync-chip" title="Volver a leer Drive"><span class="sync-dot" aria-hidden="true"></span><span id="syncText">Drive</span></button>
       <button id="installBtn" class="btn soft small" hidden title="Instalar como aplicación"><svg class="i"><use href="#i-download"/></svg><span class="hide-sm">Instalar</span></button>
-      <button id="settingsBtn" class="btn ghost small" title="Ajustes"><svg class="i"><use href="#i-settings"/></svg><span class="hide-sm">Ajustes</span></button>
-      <span class="ver" id="verTag">v8.8</span>
+      <button id="settingsBtn" class="btn ghost icon-btn" title="Ajustes" aria-label="Ajustes"><svg class="i"><use href="#i-settings"/></svg></button>
+      <span class="ver hide-sm" id="verTag">v9.0</span>
       <div class="user-menu" id="userMenu" hidden>
         <button type="button" class="user-btn" id="userBtn" aria-haspopup="true" aria-expanded="false" aria-controls="userPop" title="Tu cuenta">
           <span class="avatar" id="userAvatar">·</span><span class="user-first hide-sm" id="userFirst"></span><svg class="i chev"><use href="#i-chevron"/></svg>
@@ -234,33 +241,66 @@
     </div>
   </header>
 
-  <nav class="tabs" id="tabs" role="tablist" aria-label="Secciones">
-    <button type="button" class="tab" role="tab" id="tabRemitos" data-view="remitos" aria-selected="true"><svg class="i"><use href="#i-camera"/></svg>Remitos</button>
-    <button type="button" class="tab" role="tab" id="tabOc" data-view="oc" aria-selected="false"><svg class="i"><use href="#i-file"/></svg>Facturación</button>
-  </nav>
-
-  <main class="layout" id="remitosView">
-    <aside class="card lotes" id="lotesPanel" aria-label="PDF guardados">
-      <div class="lotes-header">
-        <h2><svg class="i"><use href="#i-file"/></svg>PDF guardados <span class="count" id="lotesCount">0</span></h2>
-        <button type="button" id="lotesRefresh" class="btn ghost icon-btn" title="Actualizar la lista" aria-label="Actualizar la lista"><svg class="i"><use href="#i-rotate"/></svg></button>
+  <!-- ===== Inicio: 3 botones + todas las OC encontradas en Drive ===== -->
+  <main class="view home" id="vInicio" data-title="Facturación">
+    <section class="card hero">
+      <div class="hero-top">
+        <div class="hero-txt">
+          <p class="kicker" id="homeHello">Hola</p>
+          <h2 id="homeMonth">Tu avance</h2>
+          <p class="hint" id="homeSummary">Leyendo Drive…</p>
+        </div>
+        <div class="ring" id="homeRing" style="--p:0" aria-hidden="true"><b id="homePct">0%</b><small>hecho</small></div>
       </div>
-      <p class="lotes-where" id="lotesWhere"></p>
-      <div class="lotes-list" id="lotesList"></div>
-      <div class="lotes-empty" id="lotesEmpty" hidden>
+      <div class="progress"><i id="homeBar"></i></div>
+      <div class="drive-log" id="driveLog" role="status" hidden></div>
+    </section>
+
+    <nav class="actions3" aria-label="Acciones">
+      <button type="button" class="act" data-go="remitos">
+        <span class="act-ico"><svg class="i"><use href="#i-camera"/></svg></span>
+        <span class="act-txt"><strong>Remitos</strong><small>Escanear, confirmar la tabla de recepciones y guardar el PDF en Drive</small></span>
+        <span class="badge-n" id="nRemitos" hidden></span>
+      </button>
+      <button type="button" class="act" data-go="facturas">
+        <span class="act-ico"><svg class="i"><use href="#i-receipt"/></svg></span>
+        <span class="act-txt"><strong>Facturas</strong><small>Tabla de facturación y carga de la factura de ARCA</small></span>
+        <span class="badge-n" id="nFacturas" hidden></span>
+      </button>
+      <button type="button" class="act" data-go="mails">
+        <span class="act-ico"><svg class="i"><use href="#i-mail"/></svg></span>
+        <span class="act-txt"><strong>Enviar mails</strong><small>Progreso de cada OC y envío de remitos y facturas</small></span>
+        <span class="badge-n" id="nMails" hidden></span>
+      </button>
+    </nav>
+
+    <section class="oc-section" aria-labelledby="ocSecTitle">
+      <div class="sec-head">
+        <h2 id="ocSecTitle">Órdenes de compra</h2>
+        <div class="seg small-seg" id="homeFilter" role="radiogroup" aria-label="Cliente">
+          <button type="button" role="radio" class="seg-btn" data-f="todos" aria-checked="true">Todas</button>
+          <button type="button" role="radio" class="seg-btn" data-f="cookmaster" aria-checked="false">Cook Master</button>
+          <button type="button" role="radio" class="seg-btn" data-f="grupol" aria-checked="false">Grupo L</button>
+        </div>
+      </div>
+      <div class="month-tabs" id="homeMonths" role="tablist" aria-label="Mes"></div>
+      <div class="oc-cards" id="ocCards"></div>
+      <div class="card empty" id="ocEmptyHome" hidden>
         <svg class="i big"><use href="#i-file"/></svg>
-        <p>Todavía no hay PDF guardados.</p>
-        <small>Elegí la OC, sacá las fotos de los remitos y tocá “Guardar remitos”. Después cargás la tabla de recepciones desde la computadora.</small>
+        <p id="ocEmptyTitle">Todavía no hay órdenes de compra.</p>
+        <small id="ocEmptySub">Al abrir la página se leen las OC y los Excel de despachos de Drive.</small>
+        <button type="button" class="btn primary" id="ocEmptyBtn" hidden>Configurar el puente a Google</button>
       </div>
-      <details class="lotes-sent" id="lotesSent" hidden>
-        <summary>Enviados <span class="cnt" id="lotesSentN"></span></summary>
-        <div class="lotes-list" id="lotesSentList"></div>
-        <p class="hint">Los enviados se borran solos a los 15 días (el PDF queda en Drive).</p>
-      </details>
-    </aside>
+    </section>
+  </main>
 
-    <section class="card scan">
-      <div class="period-bar">
+  <!-- ===== Remitos ===== -->
+  <main class="view remitos-view" id="vRemitos" hidden data-title="Remitos">
+    <section class="card unit-bar">
+      <label class="field-inline unit-pick">OC y período a escanear
+        <select id="scanUnit" aria-label="Orden de compra y período a escanear"></select>
+      </label>
+      <div class="manual-oc" id="manualOc" hidden>
         <label class="scan-oc" id="scanOcWrap"><span>OC</span>
           <input id="scanOc" type="text" inputmode="numeric" pattern="[0-9]*" list="ocSuggest" autocomplete="off" spellcheck="false" placeholder="N° de OC" maxlength="12" aria-label="Número de la orden de compra (OC)">
         </label>
@@ -270,212 +310,119 @@
         </div>
         <div class="period-info"><span class="period-lab">Remitos del</span> <b id="periodText">—</b> <small id="periodSub"></small></div>
       </div>
-      <datalist id="ocSuggest"></datalist>
-      <div class="scan-toolbar">
-        <label class="field-inline">Cámara
-          <select id="cameraSelect"></select>
-        </label>
-        <label class="field-inline">Modo de imagen
-          <select id="filterSelect">
-            <option value="mejorado" selected>Color mejorado</option>
-            <option value="documento">Documento (blanco y negro)</option>
-            <option value="gris">Escala de grises</option>
-            <option value="color">Color original</option>
-          </select>
-        </label>
-        <label class="switch"><input type="checkbox" id="autoCrop" checked><span class="slider"></span><span class="switch-text">Recorte automático</span></label>
-      </div>
-
-      <div class="video-wrap" id="videoWrap">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="overlay"></canvas>
-        <div id="detectPill" class="pill" hidden></div>
-        <div id="flash"></div>
-        <div id="cameraMsg" class="camera-msg">Iniciando cámara…</div>
-      </div>
-
-      <div class="actions">
-        <button id="captureBtn" class="btn primary big"><svg class="i"><use href="#i-camera"/></svg><span id="captureLabel">Sacar foto</span> <span class="kbd">Espacio</span></button>
-        <button id="uploadBtn" class="btn secondary big"><svg class="i"><use href="#i-upload"/></svg>Subir foto</button>
-        <input type="file" id="fileInput" accept="image/*" multiple hidden>
-      </div>
-      <p id="status" class="status" role="status"></p>
+      <div class="unit-info" id="unitInfo"></div>
     </section>
+    <datalist id="ocSuggest"></datalist>
 
-    <aside class="card pages" id="pagesPanel">
-      <div id="dropHint" class="drop-hint"><svg class="i"><use href="#i-upload"/></svg><span>Soltá las fotos acá</span></div>
-      <div class="pages-header">
-        <h2>Remitos escaneados <span class="cnt" id="count">0</span></h2>
-        <button id="clearBtn" class="btn ghost small danger-text">Vaciar todo</button>
+    <div class="layout">
+      <section class="card scan">
+        <div class="scan-toolbar">
+          <label class="field-inline">Cámara
+            <select id="cameraSelect"></select>
+          </label>
+          <label class="field-inline">Modo de imagen
+            <select id="filterSelect">
+              <option value="mejorado" selected>Color mejorado</option>
+              <option value="documento">Documento (blanco y negro)</option>
+              <option value="gris">Escala de grises</option>
+              <option value="color">Color original</option>
+            </select>
+          </label>
+          <label class="switch"><input type="checkbox" id="autoCrop" checked><span class="slider"></span><span class="switch-text">Recorte automático</span></label>
+        </div>
+        <div class="video-wrap" id="videoWrap">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div id="detectPill" class="pill" hidden></div>
+          <div id="flash"></div>
+          <div id="cameraMsg" class="camera-msg">Iniciando cámara…</div>
+        </div>
+        <div class="actions">
+          <button id="captureBtn" class="btn primary big"><svg class="i"><use href="#i-camera"/></svg><span id="captureLabel">Sacar foto</span> <span class="kbd">Espacio</span></button>
+          <button id="uploadBtn" class="btn secondary big"><svg class="i"><use href="#i-upload"/></svg>Subir foto</button>
+          <input type="file" id="fileInput" accept="image/*" multiple hidden>
+        </div>
+        <p id="status" class="status" role="status"></p>
+      </section>
+
+      <aside class="card pages" id="pagesPanel">
+        <div id="dropHint" class="drop-hint"><svg class="i"><use href="#i-upload"/></svg><span>Soltá las fotos acá</span></div>
+        <div class="pages-header">
+          <h2>Remitos escaneados <span class="cnt" id="count">0</span></h2>
+          <button id="clearBtn" class="btn ghost small danger-text">Vaciar todo</button>
+        </div>
+        <div id="thumbs" class="thumbs"></div>
+        <div id="empty" class="empty">
+          <svg class="i big"><use href="#i-image"/></svg>
+          <p>Todavía no hay remitos.</p>
+          <small>Apuntá la cámara a la hoja y tocá “Sacar foto”, o arrastrá las fotos hasta acá.</small>
+        </div>
+        <div class="pages-footer">
+          <p class="save-hint" id="saveHint"></p>
+          <button id="saveBtn" class="btn primary big wide" disabled><svg class="i"><use href="#i-download"/></svg><span id="saveLabel">Guardar remitos</span></button>
+        </div>
+      </aside>
+    </div>
+
+    <section class="card lotes" id="lotesPanel" aria-label="Remitos guardados">
+      <div class="lotes-header">
+        <h2><svg class="i"><use href="#i-file"/></svg>Remitos guardados <span class="count" id="lotesCount">0</span></h2>
+        <button type="button" id="lotesRefresh" class="btn ghost icon-btn" title="Actualizar la lista" aria-label="Actualizar la lista"><svg class="i"><use href="#i-rotate"/></svg></button>
       </div>
-      <div id="thumbs" class="thumbs"></div>
-      <div id="empty" class="empty">
-        <svg class="i big"><use href="#i-image"/></svg>
-        <p>Todavía no hay remitos.</p>
-        <small>Apuntá la cámara a la hoja y tocá “Sacar foto”, o arrastrá las fotos hasta acá.</small>
+      <p class="lotes-where" id="lotesWhere"></p>
+      <div class="lotes-list" id="lotesList"></div>
+      <div class="lotes-empty" id="lotesEmpty" hidden>
+        <svg class="i big"><use href="#i-file"/></svg>
+        <p>No hay remitos para confirmar.</p>
+        <small>Elegí la OC y el período, sacá las fotos y tocá “Guardar remitos”. Después abrís el lote, cargás la tabla de recepciones y la confirmás contra el Excel de despachos.</small>
       </div>
-      <div class="pages-footer">
-        <p class="save-hint" id="saveHint">Elegí la OC arriba antes de escanear. Al guardar, los remitos quedan en “PDF guardados”: después cargás la tabla de recepciones desde la computadora y tocás “Guardar PDF”.</p>
-        <button id="saveBtn" class="btn primary big wide" disabled><svg class="i"><use href="#i-download"/></svg><span id="saveLabel">Guardar remitos</span></button>
-      </div>
-    </aside>
+      <details class="lotes-sent" id="lotesSent" hidden>
+        <summary>Ya guardados en Drive <span class="cnt" id="lotesSentN"></span></summary>
+        <div class="lotes-list" id="lotesSentList"></div>
+        <p class="hint">Las fotos se borran solas de la cuenta a los 15 días (el PDF queda en Drive).</p>
+      </details>
+    </section>
   </main>
 
-  <!-- ===== Sección: facturación (independiente de la de remitos) ===== -->
-  <main class="oc-view" id="ocView" hidden>
-    <section class="card oc-head">
-      <div class="oc-head-txt">
-        <h2>Facturación</h2>
-        <p class="hint" id="ocExcelInfo">Buscá las órdenes de compra del mes y controlá cuánto falta facturar de cada una.</p>
-      </div>
-      <div class="oc-head-btns">
-        <button id="ocMonthBtn" type="button" class="btn primary"><svg class="i"><use href="#i-download"/></svg>Buscar OC del mes</button>
-        <button id="facRefresh" type="button" class="btn soft" title="Vuelve a mirar las carpetas de Drive en busca de facturas nuevas"><svg class="i"><use href="#i-rotate"/></svg>Actualizar facturas</button>
-        <button id="ocAddBtn" type="button" class="btn secondary"><svg class="i"><use href="#i-plus"/></svg>Agregar OC</button>
-      </div>
-    </section>
-    <p id="facStatus" class="hint fac-status" hidden></p>
-
-    <div class="fac-layout">
-      <aside class="fac-side" id="facSide" aria-label="Órdenes de compra">
-        <div id="facMonth" class="fac-month" hidden></div>
-        <div id="ocList" class="oc-list"></div>
-        <button id="ocShowDone" type="button" class="link-btn" hidden></button>
-        <button id="facClear" type="button" class="link-btn danger-text">Borrar datos guardados</button>
-      </aside>
-
-      <div class="fac-main">
-        <section id="ocEmpty" class="card empty">
-          <svg class="i big"><use href="#i-file"/></svg>
-          <p id="ocEmptyText">Todavía no cargaste ninguna OC.</p>
-          <small id="ocEmptySub">Tocá “Buscar OC del mes” o “Agregar OC”.</small>
-        </section>
-
-        <div id="ocDetail" hidden>
-          <section class="card oc-top">
-            <div class="oc-top-row">
-              <div>
-                <h3 class="oc-name">OC <b id="ocTitle"></b></h3>
-                <p class="hint" id="ocMeta"></p>
-              </div>
-              <div class="client-row">
-                <label class="field-inline">Cliente
-                  <select id="ocClient"></select>
-                </label>
-                <label class="field-inline">Período a facturar
-                  <select id="ocPeriod">
-                    <option value="">— elegir —</option>
-                    <option value="q1">1ª quincena (1 al 15)</option>
-                    <option value="q2">2ª quincena (16 al fin)</option>
-                    <option value="mes">Mes completo</option>
-                    <option value="w1">Semana 1 (1 al 7)</option>
-                    <option value="w2">Semana 2 (8 al 14)</option>
-                    <option value="w3">Semana 3 (15 al 21)</option>
-                    <option value="w4">Semana 4 (22 al 28)</option>
-                    <option value="w5">Semana 5 (29 al fin)</option>
-                    <option value="custom">Otros días…</option>
-                  </select>
-                </label>
-                <label class="field-inline" id="ocOtherWrap" hidden>Hoja del Excel
-                  <select id="ocOtherSheet"></select>
-                </label>
-                <span id="ocCustom" class="custom-days" hidden>
-                  <label class="field-inline">Desde<input id="ocFrom" type="text" inputmode="numeric" maxlength="2"></label>
-                  <label class="field-inline">Hasta<input id="ocTo" type="text" inputmode="numeric" maxlength="2"></label>
-                </span>
-              </div>
-            </div>
-            <p id="ocAutoInfo" class="hint"></p>
-            <div id="ocBill" class="bill"></div>
-          </section>
-
-          <details class="card sec" id="secFact" open>
-            <summary>Facturas <span id="facCount" class="cnt"></span></summary>
-            <div id="facBody" class="sec-body"></div>
-          </details>
-
-          <details class="card sec" id="secInv" open>
-            <summary>Tabla de facturación</summary>
-            <div class="sec-body">
-              <div class="sec-tools"><button id="ocCopyBtn" type="button" class="btn soft small"><svg class="i"><use href="#i-copy"/></svg>Copiar tabla</button></div>
-              <div id="ocWarn"></div>
-              <div class="table-wrap">
-                <table class="oc-table" id="ocInvTable">
-                  <thead><tr><th>DESCRIPCIÓN</th><th class="num">CANTIDAD</th><th class="num">PRECIO</th><th class="ctr">IVA</th></tr></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-              <div id="ocInvTotals" class="inv-totals"></div>
-              <p id="ocOmitted" class="hint"></p>
-            </div>
-          </details>
-
-          <details class="card sec" id="secDel">
-            <summary>Entregas y coincidencias <span id="ocDelMini" class="cnt"></span></summary>
-            <div class="sec-body">
-              <p class="hint"><b>Opcional:</b> si preferís no usar el Excel de Despachos, copiá las celdas desde Excel y pegalas acá (tiene prioridad). <b>Primera columna:</b> descripción del producto. <b>Siguientes columnas:</b> cantidad entregada cada día.</p>
-              <textarea id="ocPaste" rows="5" spellcheck="false" placeholder="Pegá acá la tabla copiada de Excel…"></textarea>
-              <div class="row-inline"><button id="ocPasteClear" type="button" class="btn ghost small danger-text">Borrar lo pegado</button><span id="ocPasteInfo" class="hint"></span></div>
-              <details id="ocReviewBox" class="review" hidden>
-                <summary id="ocReviewSummary">Coincidencias con la OC</summary>
-                <div class="table-wrap"><table class="oc-table" id="ocReviewTable"><thead><tr><th>EN TU TABLA</th><th class="num">SUMA</th><th>PRODUCTO DE LA OC</th></tr></thead><tbody></tbody></table></div>
-              </details>
-            </div>
-          </details>
-
-          <details class="card sec" id="secIva">
-            <summary>Productos e IVA de la OC <span id="ocIvaMini" class="cnt"></span></summary>
-            <div class="sec-body">
-              <div id="ocIvaBadge" class="badge"></div>
-              <div class="table-wrap">
-                <table class="oc-table" id="ocItemsTable">
-                  <thead><tr><th>DESCRIPCIÓN</th><th class="num">PRECIO (sin IVA)</th><th class="ctr">IVA</th></tr></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
-          </details>
+  <!-- ===== Facturas ===== -->
+  <main class="view fact-view" id="vFacturas" hidden data-title="Facturas">
+    <div class="fact-layout">
+      <aside class="card unit-list" aria-label="OC y períodos">
+        <div class="sec-head tight">
+          <h2>OC y períodos</h2>
+          <div class="seg small-seg" id="factFilter" role="radiogroup" aria-label="Mostrar">
+            <button type="button" role="radio" class="seg-btn" data-f="pendientes" aria-checked="true">Pendientes</button>
+            <button type="button" role="radio" class="seg-btn" data-f="todas" aria-checked="false">Todas</button>
+          </div>
         </div>
-      </div>
+        <div class="unit-items" id="factList"></div>
+      </aside>
+      <section class="fact-main" id="factMain" aria-live="polite"></section>
     </div>
   </main>
 
-  <!-- Buscar OC del mes en Drive -->
-  <dialog id="ocMonthDialog" class="dlg">
-    <form method="dialog" id="ocMonthForm" novalidate>
-      <h3>Buscar las OC del mes</h3>
-      <p class="hint">Busca en Drive: Compartido conmigo / Facturación / <b>mes</b> / Cook Master. Trae todas las órdenes de compra y el Excel de Despachos.</p>
-      <label class="field">Mes
-        <input id="ocMonthInput" type="text" list="ocMonthList" autocomplete="off" spellcheck="false" placeholder="Ej.: Noviembre">
-        <datalist id="ocMonthList"><option value="Enero"><option value="Febrero"><option value="Marzo"><option value="Abril"><option value="Mayo"><option value="Junio"><option value="Julio"><option value="Agosto"><option value="Septiembre"><option value="Octubre"><option value="Noviembre"><option value="Diciembre"></datalist>
-      </label>
-      <div id="ocMonthProgress" class="month-progress" role="status"></div>
-      <div class="dialog-actions">
-        <button type="button" id="ocMonthCancel" class="btn secondary">Cerrar</button>
-        <button type="submit" id="ocMonthGo" class="btn primary">Buscar</button>
+  <!-- ===== Enviar mails ===== -->
+  <main class="view mails-view" id="vMails" hidden data-title="Enviar mails">
+    <section class="card mails-card">
+      <div class="sec-head">
+        <div>
+          <h2>Progreso de cada OC</h2>
+          <p class="hint">Cook Master: «Portal» manda solo los remitos; «Mail» manda los remitos y la factura. Grupo L no lleva mail: la factura va por WhatsApp.</p>
+        </div>
+        <div class="seg small-seg" id="mailFilter" role="radiogroup" aria-label="Cliente">
+          <button type="button" role="radio" class="seg-btn" data-f="todos" aria-checked="true">Todas</button>
+          <button type="button" role="radio" class="seg-btn" data-f="cookmaster" aria-checked="false">Cook Master</button>
+          <button type="button" role="radio" class="seg-btn" data-f="grupol" aria-checked="false">Grupo L</button>
+        </div>
       </div>
-    </form>
-  </dialog>
-
-  <!-- Agregar OC -->
-  <dialog id="ocAddDialog" class="dlg">
-    <form method="dialog" id="ocAddForm" novalidate>
-      <h3>Agregar orden de compra</h3>
-      <label class="field">Número de OC
-        <input id="ocAddNumber" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Ej.: 93031" maxlength="12">
-      </label>
-      <label class="dropzone disabled" id="ocDrop">
-        <svg class="i big"><use href="#i-upload"/></svg>
-        <strong id="ocDropTitle">Escribí primero el número de OC</strong>
-        <small id="ocDropSub">Después podés elegir el PDF o arrastrarlo hasta acá.</small>
-        <input type="file" id="ocFile" accept="application/pdf,.pdf" hidden disabled>
-      </label>
-      <p id="ocAddMsg" class="err" role="alert"></p>
-      <div class="dialog-actions">
-        <button type="button" id="ocAddCancel" class="btn secondary">Cancelar</button>
-      </div>
-    </form>
-  </dialog>
+      <div class="table-wrap prog-wrap"><table class="prog-table" id="mailTable"></table></div>
+      <p class="hint" id="mailEmpty" hidden>No hay OC en los meses leídos de Drive.</p>
+    </section>
+    <div class="send-bar" id="mailBar">
+      <span id="mailSel">Elegí los mails que estén listos.</span>
+      <button type="button" class="btn primary" id="mailSend" disabled><svg class="i"><use href="#i-send"/></svg><span>Enviar mails</span></button>
+    </div>
+  </main>
 
   <!-- Avisos y preguntas -->
   <dialog id="msgDialog" class="dlg small-dlg">
@@ -485,8 +432,9 @@
       <button type="button" id="msgOk" class="btn primary">Aceptar</button>
     </div>
   </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-  <!-- PDF guardado: fotos de los remitos + tabla de recepciones + envío -->
+  <!-- Remitos guardados: fotos + tabla de recepciones + comparación con el Excel de despachos -->
   <dialog id="lotDialog" class="dlg lot-dlg" aria-labelledby="lotTitle">
     <div class="lot-head">
       <div class="lot-head-txt">
@@ -515,15 +463,11 @@
           <label class="field lot-oc">Orden de compra (OC)
             <input id="lotOc" type="text" inputmode="numeric" pattern="[0-9]*" list="ocSuggest" autocomplete="off" spellcheck="false" placeholder="Ej.: 93035" maxlength="12">
           </label>
-          <div class="lot-period">
-            <div class="seg" id="lotPeriodSeg" role="radiogroup" aria-label="Tipo de período">
-              <button type="button" role="radio" class="seg-btn" data-mode="semanal" aria-checked="true">Semanal</button>
-              <button type="button" role="radio" class="seg-btn" data-mode="quincenal" aria-checked="false">Quincenal</button>
-            </div>
-            <span class="period-info">Remitos del <b id="lotPeriodText">—</b> <small id="lotPeriodSub"></small></span>
-          </div>
+          <label class="field lot-per">Período
+            <select id="lotPeriod"></select>
+          </label>
         </div>
-        <p class="hint lot-file">Archivo: <b id="lotFile">REMITOS_…</b>.pdf</p>
+        <p class="hint lot-file">Archivo: <b id="lotFile">REMITOS_…</b>.pdf <span id="lotCount"></span></p>
         <div class="xl-bar">
           <strong class="xl-title"><svg class="i"><use href="#i-list"/></svg>Tabla de recepciones</strong>
           <span class="xl-saved" id="lotSaved" role="status"></span>
@@ -533,7 +477,8 @@
           </div>
         </div>
         <div class="xl-wrap" id="lotGridWrap"><table class="xl" id="lotGrid" aria-label="Tabla de recepciones: un renglón por producto y una columna por remito"></table></div>
-        <p class="hint xl-help">Una columna por remito: al pasar a una columna se muestra la foto de ese remito. <b>Enter</b> baja, <b>Tab</b> y las <b>flechas</b> te mueven, <b>Esc</b> deshace la celda. Podés pegar celdas copiadas de Excel y escribir sumas (<b>120+35,5</b>). Los cambios se guardan solos.</p>
+        <div class="cmp-box" id="lotCmp" role="status"></div>
+        <p class="hint xl-help">Una columna por remito: al pasar a una columna se muestra la foto de ese remito. La columna <b>Excel</b> es lo que dice el Excel de despachos del período. <b>Enter</b> baja, <b>Tab</b> y las <b>flechas</b> te mueven, <b>Esc</b> deshace la celda. Podés pegar celdas copiadas de Excel y escribir sumas (<b>120+35,5</b>). Los cambios se guardan solos.</p>
         <p id="lotErr" class="err" role="alert"></p>
         <p class="hint lot-dest" id="lotDest"></p>
       </form>
@@ -541,9 +486,41 @@
     <div class="lot-foot">
       <button type="button" id="lotDelete" class="btn ghost small danger-text" title="Borrar estos remitos guardados"><svg class="i"><use href="#i-trash"/></svg><span class="hide-sm">Borrar</span></button>
       <div class="lot-foot-btns">
-        <button type="button" id="lotDownload" class="btn secondary" title="Descargar el PDF en este dispositivo, sin enviarlo"><svg class="i"><use href="#i-download"/></svg><span>Descargar<span class="hide-sm"> PDF</span></span></button>
-        <button type="button" id="lotSend" class="btn primary" title="Guarda el PDF (remitos + tabla) en Drive y deja el borrador en Gmail"><svg class="i"><use href="#i-send"/></svg>Guardar PDF</button>
+        <button type="button" id="lotDownload" class="btn secondary" title="Descargar el PDF en este dispositivo"><svg class="i"><use href="#i-download"/></svg><span>Descargar<span class="hide-sm"> PDF</span></span></button>
+        <button type="button" id="lotSend" class="btn primary" title="Compara la tabla con el Excel de despachos y guarda el PDF (remitos + tabla) en la carpeta de la OC"><svg class="i"><use href="#i-check"/></svg><span>Confirmar y guardar en Drive</span></button>
       </div>
+    </div>
+  </dialog>
+
+  <!-- La tabla no coincide con el Excel de despachos: se pide la tabla de despachos real -->
+  <dialog id="diffDialog" class="dlg wide-dlg diff-dlg" aria-labelledby="diffTitle">
+    <div class="dlg-head">
+      <span class="auth-badge warn sm"><svg class="i"><use href="#i-alert"/></svg></span>
+      <div><h3 id="diffTitle">La tabla no coincide con el Excel de despachos</h3><p class="hint" id="diffSub"></p></div>
+      <button type="button" id="diffClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dlg-body">
+      <p class="diff-lead">La tabla de recepciones escaneada <b>no se confirma</b>. Ingresá la <b>tabla de despachos real</b>: viene completada con el Excel; corregí lo que haga falta. El PDF se guarda con los remitos escaneados y esta tabla.</p>
+      <div class="table-wrap"><table class="oc-table diff-table" id="diffTable"></table></div>
+      <p class="err" id="diffErr" role="alert"></p>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" id="diffBack" class="btn secondary">Volver a la tabla</button>
+      <button type="button" id="diffSave" class="btn primary"><svg class="i"><use href="#i-check"/></svg>Guardar con los despachos reales</button>
+    </div>
+  </dialog>
+
+  <!-- Confirmar el envío de mails -->
+  <dialog id="mailDialog" class="dlg wide-dlg" aria-labelledby="mailTitle">
+    <div class="dlg-head">
+      <span class="auth-badge sm"><svg class="i"><use href="#i-mail"/></svg></span>
+      <div><h3 id="mailTitle">Enviar mails</h3><p class="hint" id="mailSub"></p></div>
+      <button type="button" id="mailClose" class="btn ghost icon-btn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dlg-body"><div id="mailList" class="mail-list"></div><p class="err" id="mailErr" role="alert"></p></div>
+    <div class="dialog-actions">
+      <button type="button" id="mailCancel" class="btn secondary">Cancelar</button>
+      <button type="button" id="mailGo" class="btn primary"><svg class="i"><use href="#i-send"/></svg><span id="mailGoLabel">Enviar</span></button>
     </div>
   </dialog>
 
@@ -577,14 +554,8 @@
   <!-- Ajustes -->
   <dialog id="settingsDialog" class="dlg">
     <h3>Ajustes</h3>
-    <label class="field">Productos de la tabla de recepciones (uno por línea)
-      <textarea id="catalogInput" rows="10" spellcheck="false"></textarea>
-    </label>
-    <div class="row-inline">
-      <button type="button" id="resetCatalog" class="btn ghost small">Restaurar lista original</button>
-    </div>
     <fieldset class="bridge">
-      <legend>Puente a Google Drive y Gmail</legend>
+      <legend>Puente a Google (Drive, planilla y Gmail)</legend>
       <label class="field">Dirección del puente (URL que termina en /exec)
         <input id="bridgeUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec">
       </label>
@@ -595,10 +566,32 @@
         <button type="button" id="bridgeTest" class="btn ghost small">Probar conexión</button>
         <span id="bridgeMsg" class="bridge-msg" role="status"></span>
       </div>
-      <p class="hint">Con el puente configurado, “Guardar PDF” (en cada PDF guardado) lo sube a Drive (OC-año / MES / OC-número) y deja un borrador de Gmail con el PDF adjunto (remitos + tabla de recepciones). Se configura en cada dispositivo desde el que quieras guardar el PDF. Sin puente, el PDF se descarga.</p>
+      <p class="hint">El puente lee las OC y los Excel de despachos (Compartido conmigo / Facturacion), guarda los PDF en Mi unidad / OC-año / Cliente / OC-número, agrega las facturas a la planilla de Facturación y manda los mails. Se configura en cada dispositivo.</p>
     </fieldset>
+    <fieldset class="bridge">
+      <legend>Envíos</legend>
+      <label class="field">Mails de Cook Master
+        <select id="mailModo">
+          <option value="enviar">Enviarlos directamente</option>
+          <option value="borrador">Dejarlos como borrador en Gmail (los mandás vos)</option>
+        </select>
+      </label>
+      <label class="field">WhatsApp para las facturas de Grupo L (con código de país, sin + ni espacios)
+        <input id="wppNumero" type="text" inputmode="tel" autocomplete="off" spellcheck="false" placeholder="Ej.: 5491122334455">
+      </label>
+      <p class="hint">En el iPhone, «Enviar por WhatsApp» abre la hoja para compartir con el PDF de la factura: elegí WhatsApp y el contacto. En la computadora se abre el chat y se descarga el PDF para adjuntarlo.</p>
+    </fieldset>
+    <label class="field">Productos de la tabla de recepciones cuando la OC no está en Drive (uno por línea)
+      <textarea id="catalogInput" rows="6" spellcheck="false"></textarea>
+    </label>
+    <div class="row-inline">
+      <button type="button" id="resetCatalog" class="btn ghost small">Restaurar lista original</button>
+    </div>
     <label class="switch field-switch"><input type="checkbox" id="hiResChk"><span class="slider"></span><span class="switch-text">Usar la foto de máxima resolución de la cámara (si está disponible)</span></label>
-    <p class="hint">Versión de la página: <b id="verLabel">8.8</b></p>
+    <div class="row-inline">
+      <button type="button" id="driveReset" class="btn ghost small">Volver a leer todo Drive</button>
+    </div>
+    <p class="hint">Versión de la página: <b id="verLabel">9.0</b></p>
     <div class="dialog-actions">
       <button type="button" id="cancelSettings" class="btn secondary">Cancelar</button>
       <button type="button" id="saveSettings" class="btn primary">Guardar ajustes</button>
@@ -618,10 +611,17 @@
   <script src="factparse.js"></script>
   <script src="xlsx.js"></script>
   <script src="despachos.js"></script>
+  <script src="grupol.js"></script>
+  <script src="flujo.js"></script>
   <script src="pdf.js"></script>
+  <script src="app.js"></script>
+  <script src="unidades-store.js"></script>
+  <script src="drive.js"></script>
   <script src="scanner.js"></script>
   <script src="lotes-store.js"></script>
   <script src="lotes.js"></script>
-  <script src="oc.js"></script>
+  <script src="facturas.js"></script>
+  <script src="mails.js"></script>
+  <script src="inicio.js"></script>
 </body>
 </html>

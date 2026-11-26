@@ -1,7 +1,7 @@
 // pdf.js — Generador de PDF sin librerías externas.
 // buildPdf(pages, opts)
 //   pages: [{bytes: Uint8Array (JPEG), w, h}]   -> una página A4 por remito, con encabezado y pie
-//   opts:  {company, date, logo:{bytes,w,h}|null, summary: null | {rows:[{name, qtyText, cells?:[texto por remito]}], cols, note}}
+//   opts:  {company, date, logo:{bytes,w,h}|null, summary: null | {rows:[{name, qtyText, cells?:[texto por remito]}], cols, title, note}}
 // La tabla de recepciones (summary) va al final. Devuelve un Blob PDF.
 (function (root) {
   "use strict";
@@ -120,7 +120,7 @@
       if (first) {
         let tx = TM, logoH = 74;
         if (o.logo) { const l = logoOp(o.logo, TM, PH - 40 - logoH, logoH); ops += l.ops; tx = TM + l.w + 20; }
-        ops += text("TABLA DE RECEPCIONES", tx, PH - 72, 21, "F3", WINE);
+        ops += text(fitText(S.title || "TABLA DE RECEPCIONES", PW - tx - TM, 21, true), tx, PH - 72, 21, "F3", WINE);
         ops += text(o.company || "", tx, PH - 90, 10.5, "F2", INK);
         const meta = [o.oc ? "OC: " + o.oc : "", o.periodText ? "Período: " + o.periodText : "", o.date ? "Fecha: " + o.date : "", o.remitos ? "Remitos escaneados: " + o.remitos : ""].filter(Boolean).join("   ·   ");
         if (meta) ops += text(meta, tx, PH - 105, 9, "F1", MUTED);
@@ -129,7 +129,7 @@
       } else {
         let tx = TM;
         if (o.logo) { const l = logoOp(o.logo, TM, PH - 28 - 34, 34); ops += l.ops; tx = TM + l.w + 12; }
-        ops += text("Tabla de recepciones (continuación)", tx, PH - 50, 12, "F3", WINE);
+        ops += text((S.title ? S.title.charAt(0) + S.title.slice(1).toLowerCase() : "Tabla de recepciones") + " (continuación)", tx, PH - 50, 12, "F3", WINE);
         ops += line(TM, PH - 72, PW - TM, PH - 72, WINE, 1.1);
         y = PH - 90;
       }
@@ -162,7 +162,13 @@
     // cierre de la tabla
     ops += line(TM, y, TM + TW, y, WINE, 1.1);
     const notes = [S.note, cols && C_R < 44 ? "R1, R2…: remito 1, 2… de este PDF." : ""].filter(Boolean).join("  ");
-    if (notes) ops += text(notes, TM, y - 18, 8.5, "F1", MUTED);
+    if (notes) {                                          // la nota se parte en renglones del ancho de la tabla
+      const lines = [];
+      let cur = "";
+      notes.split(/\s+/).forEach((w) => { const t = cur ? cur + " " + w : w; if (textWidth(t, 8.5, false) > TW && cur) { lines.push(cur); cur = w; } else cur = t; });
+      if (cur) lines.push(cur);
+      lines.slice(0, 4).forEach((l, k) => { ops += text(l, TM, y - 18 - k * 11, 8.5, "F1", MUTED); });
+    }
     close();
     return { pages: out, pw: PW, ph: PH };
   }

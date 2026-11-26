@@ -1,4 +1,4 @@
-// lotes-store.js — Dónde se guardan los "PDF guardados" (cada lote de remitos escaneados), v8.3 (v8.8: la OC se elige al escanear).
+// lotes-store.js — Dónde se guardan los lotes de remitos escaneados, v8.3 (v8.8: la OC se elige al escanear; v9.0: también el cliente).
 //
 // · Con la sesión iniciada (cuenta aprobada) se guardan en la cuenta del usuario, en Cloud Firestore
 //   (Firebase, plan gratuito "Spark", sin tarjeta). Así se sacan las fotos con el celular y la tabla de
@@ -9,7 +9,8 @@
 //   (Firebase Storage ya no es gratis: desde 2026 exige el plan pago Blaze. Por eso las fotos van en Firestore.)
 // · Primero se guarda todo en este dispositivo (IndexedDB) y después se sube. Si no hay conexión, el lote queda
 //   "sin subir" y se reintenta solo. Sin cuenta (Firebase sin configurar) los lotes quedan solo en el dispositivo.
-// · Los lotes enviados al borrador de Gmail se borran solos a los 15 días (el PDF queda en Drive).
+// · Los lotes cuyo PDF ya está en Drive se borran solos a los 15 días (el PDF queda en Drive y el estado de la OC en
+//   unidades-store.js).
 (function (root) {
   "use strict";
   const FB = () => root.LAGFirebase;
@@ -213,7 +214,7 @@
       return { items: out, error };
     },
 
-    // Guarda las fotos recién escaneadas. shots = [{blob, w, h}], extra = {oc} (la OC elegida antes de escanear).
+    // Guarda las fotos recién escaneadas. shots = [{blob, w, h}], extra = {oc, cliente} (elegidos antes de escanear).
     // Devuelve {id, cloud, reason}
     async save(shots, periodo, onProgress, extra) {
       const c = cloud();
@@ -224,7 +225,7 @@
         id: newId(), creado: now, actualizado: now, paginas: fotos.length, partes: 0,
         tamano: fotos.reduce((s, f) => s + f.bytes.length, 0), subido: false,
         periodo: Object.assign({}, periodo), miniatura: await miniatura(shots[0].blob),
-        tabla: { oc: String((extra && extra.oc) || "").replace(/\D+/g, ""), remitos: fotos.length, filas: [], valores: [], extras: [] }, estado: "pendiente", enviado: null, carpeta: "", archivo: "",
+        tabla: { oc: String((extra && extra.oc) || "").replace(/\D+/g, ""), cliente: String((extra && extra.cliente) || ""), remitos: fotos.length, filas: [], valores: [], extras: [] }, estado: "pendiente", enviado: null, carpeta: "", archivo: "",
         uid: c ? c.uid : null, pendiente: !!c, error: ""
       };
       let savedLocal = true;

@@ -4,17 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-This is a static PWA called "Escáner de remitos", built for LAG Panificados SRL, a small bakery in Argentina. It does three things:
+This is a static PWA called "Facturación LAG" (formerly "Escáner de remitos"), built for LAG Panificados SRL, a small bakery in Argentina. Since v9.0 it is one main screen (Inicio) with three buttons and the list of every purchase order (OC) found in Google Drive. It bills two clients:
 
-- **Remitos tab:** the flow since v8.8:
-  1. On the phone, pick the OC number (`#scanOc`), then scan the delivery notes (remitos) with the camera, CamScanner-style (crop + enhance).
-  2. "Guardar remitos" saves the batch as a "PDF guardado" (lote) with that OC, in the user's account.
-  3. On the PC, the reception table is filled in an Excel-like grid: one row per product, one column per remito, plus a total.
-  4. "Guardar PDF" builds the PDF (remitos + table) and sends it to Google Drive and a Gmail draft.
+- **Cook Master:** several OCs per month (one per site: CC, CS/Penal, La Plata, UP 59, UP 60, Alcaidía, others), billed per quincena (one remito per day: 15 or 16). One monthly "Despachos" Excel.
+- **Grupo L:** one OC per month (SAP format), billed per week; one "PEDIDO SEMANAL" Excel per week with 3 products.
 
-  The table stays attached to the lote's OC for the Facturación tab. The owner plans to wire it into Facturación next.
-- **Facturación tab:** builds billing tables from purchase orders (OC) and the monthly Excel of deliveries ("Despachos").
-- **Billing progress:** tracks what percentage of each OC is already invoiced.
+The three buttons:
+
+1. **Remitos:** pick OC + period from the Drive list, scan the remitos (CamScanner-style crop + enhance), "Guardar remitos" saves a lote. In the lote dialog the reception grid has an **Excel** column (despachos for that product and period). "Confirmar y guardar en Drive" compares remitos vs. Excel: if equal, builds the PDF (remitos + table) and uploads it to `Mi unidad/OC-<año>/<Cliente>/OC-<n>`; if not, the scanned table is not confirmed and the user enters the real despachos table, which goes into the PDF instead.
+2. **Facturas:** billing table per OC + period (quantities from the confirmed table, prices/IVA from the OC). The user uploads the ARCA invoice PDF; the app parses it, checks it against the table, saves it in the OC folder and appends a row to the "Facturación" Google Sheet (Grupo L → 1st sheet, Cook Master → 2nd sheet). Grupo L: send by WhatsApp (Web Share). Cook Master: choose «Portal» or «Mail».
+3. **Enviar mails:** progress table of every OC + period; sends the Cook Master mails (Portal: remitos PDF; Mail: remitos + invoice) and then fills "REMITOS ENV" and "FC (MAIL O PORTAL)" in the sheet.
 
 Technical constraints:
 
@@ -61,15 +60,16 @@ There are two kinds of modules.
 
 - **Pure, DOM-free modules**, wrapped as `(function (root) { ... })(typeof self !== "undefined" ? self : this)`:
   - Ending: `if (typeof module === "object" && module.exports) module.exports = api; else root.X = api;`
-  - Global names: `Crop`, `Enhance`, `Period`, `PdfCrypt`, `PdfText`, `OcParse`, `FactParse`, `Xlsx`, `Despachos`, `buildPdf`.
-  - Dependencies between them use `require` in Node and `root.X` in the browser. For example, `despachos.js` and `factparse.js` depend on `OcParse`.
+  - Global names: `Crop`, `Enhance`, `Period`, `PdfCrypt`, `PdfText`, `OcParse`, `FactParse`, `Xlsx`, `Despachos`, `GrupoL`, `Flujo`, `buildPdf`.
+  - Dependencies between them use `require` in Node and `root.X` in the browser.
+  - `flujo.js` is the billing logic: units (OC + period), `despachos()`, `qtyByItem`, `compare`, `billing`, `quantities`, `descripcion` (sheet text), `filaPlanilla`, `progress`. Test it in Node with real files.
 - **UI controllers**, as arrow IIFEs that touch the DOM:
-  - `scanner.js` owns the Remitos tab: camera, capture, crop, enhance, the current batch of thumbnails, settings, the bridge call and PDF assembly. It exposes `window.RemitosApp`: `settings()`, `pages()`, `catalog()`, `setActive(on)`, `askConfirm`, `showMessage`, `setStatus`, `bridgeReady`, `sendToBridge`, `makePdf`, `downloadBlob`.
-  - `lotes.js` owns the "PDF guardados" side panel and the lote dialog (photo viewer + reception grid + "Guardar PDF"/download/delete). It exposes `window.Lotes`:
-    - `saveBatch(shots, periodo, onProgress, { oc })`, which `scanner.js` calls from "Guardar remitos";
-    - `refresh()`;
-    - `recepciones(oc?)`, which returns the saved tables for Facturación.
-  - `oc.js` is the Facturación tab and is independent of the Remitos tab. Switching to it turns off the camera through `setActive(false)`.
+  - `app.js` (`window.App`): settings (localStorage `settings`), hash navigation (`#inicio`, `#remitos`, `#facturas`, `#mails`; `App.go(view, {unit})`), `askConfirm`/`showMessage`/`toast`, an event bus (`App.on/emit`: `unlock`, `view`, `datos`, `lotes`, `settings`, `drive:*`). It starts everything on `DOMContentLoaded` + `LAGAuth.onUnlock`.
+  - `drive.js`: `window.Puente.call({action, ...})` (the bridge) and `window.Datos` (Drive scan of the previous, current and next month; OC records, Cook Master workbooks, Grupo L weeklies; `Datos.units()` builds the units with progress). Downloaded files are cached in IndexedDB `lag-drive`; the scan result in localStorage `datosDrive`.
+  - `unidades-store.js` (`window.UnidadesStore`): per-unit state (`confirmacion`, `remitos`, `tablaReal`, `pdf`, `factura`, `envio`, `planilla`, `mail`, `wpp`). Local copy + Firestore `usuarios/{uid}/unidades/{key}`. Key = `cliente|oc|YYYY-MM-DD_YYYY-MM-DD`.
+  - `scanner.js` (`window.RemitosApp`): camera, capture, crop, enhance, thumbnails, unit selector, "Guardar remitos", `makePdf`. The camera only runs in the Remitos view (`setActive`).
+  - `lotes.js` (`window.Lotes`): saved lotes list + lote dialog (photo viewer, grid with Excel column, compare, diff dialog, upload). `items()`, `recepcionOf()`, `open(id)`, `saveBatch(shots, periodo, onProgress, {oc, cliente})`.
+  - `facturas.js`, `mails.js`, `inicio.js`: the three views.
 
 ### Paper crop and filters (v8.7, CamScanner-style)
 
@@ -122,9 +122,10 @@ There are two kinds of modules.
   - `tabla` (v8.8): `{ oc, remitos, filas: [{nombre, cant: [text per remito]}], valores: [{nombre, texto: total}], extras: [] }`.
     - `valores` carries the per-product totals, the format v8.3–8.7 read.
     - Lotes saved before v8.8 have only `valores`/`extras`. `toWork` loads each old total into the Remito 1 column.
-    - `tabla.oc` is set at save time from the OC chosen in the scanner.
+    - `tabla.oc` and `tabla.cliente` (v9.0) are set at save time from the unit chosen in the scanner.
     - `firestore.rules` only checks `tabla is map`, so the table format can change without a rules change. No arrays directly inside arrays: Firestore rejects them.
-  - `periodo`: the object returned by `Period.forDate`, recomputed from `creado` when the mode changes.
+  - `periodo`: a `Period` object (`{mode, from, to, year, month, label}` plus `toMonth/toYear` when it crosses months, e.g. a Grupo L week). Set from the unit; the lote dialog lets the user pick another period of the same OC.
+  - `estado: "enviado"` now means "PDF saved in Drive". The flow state that must outlive the 15-day cleanup lives in `unidades` (see Persistence).
 - Without a signed-in, approved account (unconfigured Firebase), lotes stay local only.
 
 The automatic handwriting reader (v8.0–8.2: `lector.js`, `digits-core.js`, `digits-model.js`, `rl.js`) was removed in v8.3 at the owner's request. It is in git history before the v8.3 commit if it is ever needed.
@@ -148,11 +149,13 @@ The lote dialog in `lotes.js` holds the reception grid, `table#lotGrid` (`.xl`),
   - `flushSave` runs `S.update(cur, { tabla, periodo, estado })` and serializes the saves.
   - Saves are flushed on close, on `visibilitychange`, and before "Guardar PDF". There is no "Guardar tabla" button.
 - **Cells:** each cell takes a number or a sum (`parseQty`: `12`, `12,5`, `1.250`, `120+35`). Invalid cells turn red, the total shows `?`, and "Guardar PDF" refuses to continue.
-- **"Guardar PDF" (`sendCurrent`):**
-  1. Validate the cells and flush the autosave.
-  2. Call `A.makePdf(fotos, name, oc, per, rows, n)`, then `A.sendToBridge`.
-  3. Mark the lote `enviado`.
-  4. Dispatch `document` event `lag:recepcion` with `recepcionOf(lote)` = `{ id, oc, periodo, estado, enviado, archivo, remitos, filas: [{nombre, cant: [number|null], total}] }`.
+- **Rows:** with the OC known (from Drive), one row per OC product (`OcParse.shortName`), sorted by the LAG remito catalog order; otherwise the settings catalog.
+- **Excel column (v9.0):** despachos for the lote's OC and period (`Flujo.despachos` + `qtyByItem`), green when equal to the row total (`Flujo.TOL`), red with the difference otherwise.
+- **"Confirmar y guardar en Drive" (`sendCurrent` → `finish`):**
+  1. Validate the cells and flush the autosave; warn if the Cook Master remito count ≠ days of the period.
+  2. Compare with the Excel. Different → `#diffDialog` asks for the real despachos table (`confirmacion: "real"`). No Excel yet → confirm and save (`"sin-excel"`).
+  3. Build the PDF (`R().makePdf`, with `{title, note}` for the real table), `Puente.call({action: "subir", tipo: "remitos"})`.
+  4. `UnidadesStore.update(key, {confirmacion, remitos, tablaReal, despachos, pdf})` and mark the lote `enviado`.
 
   Without a bridge on the device, it offers to download the PDF instead.
 - **PDF table** (`pdf.js` `layoutTable`): columns Producto | Rem. 1 … | Total.
@@ -163,22 +166,24 @@ The iPhone Shortcut / Live Text quantity reader (v8.4–8.7: `lectura.js`, the "
 
 ### Persistence
 
-All app data is per device in `localStorage`. The main keys are:
+Per device, in `localStorage`:
 
-- `settings`, which includes `bridgeUrl`, `bridgeKey`, `catalog`, `periodMode`, `filterMode` and `oc` (the OC typed in the scanner; it is cleared after "Guardar remitos"). It is per device, so the bridge must be configured on every device that sends.
-- `ocData`, `ocAliases`, `ocClientAliases`, `facCache`.
+- `settings`: `bridgeUrl`, `bridgeKey`, `catalog`, `periodMode`, `filterMode`, `autoCrop`, `hiRes`, `oc` (manual OC), `unidad` (selected unit in Remitos), `mailModo` (`enviar` | `borrador`), `wppNumero`. Keep these key names: devices already have the bridge configured.
+- `datosDrive` (Drive scan), `ocAjustes` (per-OC sede, Excel sheet, IVA overrides), `ocAliases` (Excel/remito product name → OC product), `ocClientAliases` (delivery place → sede), `unidades` (local copy of unit states), `factSel`.
+- IndexedDB `lag-drive` (downloaded OC/Excel bytes) and `lag-remitos` (lotes not yet uploaded).
 
-Server-side data is the user accounts plus each user's lotes (see above and below).
+Server-side: the user accounts, each user's lotes and each user's `unidades`. Shared truth lives in Drive and the Facturación sheet.
 
-### Google "puente" (bridge)
+### Google "puente" (bridge) — `puente-google/Codigo.gs` (v5)
 
-This is a Google Apps Script web app that is **not in this repo**. Its instructions file, `puente-google/INSTRUCCIONES-PUENTE.txt`, lives with the owner.
+A Google Apps Script web app, now kept in this repo (`puente-google/`, not cached by the SW). The owner pastes it into script.google.com, sets `const CLAVE`, runs `autorizar()` once and deploys a "Nueva versión" (INSTRUCCIONES-PUENTE.txt).
 
-- Requests are POSTs with `Content-Type: text/plain` (to avoid a CORS preflight) and a JSON body `{ key, action, ... }`.
-- Actions used by `oc.js`: `list`, `files`, `facturas`.
-- `scanner.js` (`sendToBridge`, called from `lotes.js`) uploads the PDF and creates the Gmail draft.
-- The URL must match `https://script.google(usercontent).com/`.
-- If you change the payload, the owner must redeploy the bridge. Say so explicitly in the release notes.
+- Requests are POSTs with `Content-Type: text/plain` (to avoid a CORS preflight) and a JSON body `{ key, action, ... }`. GET `?key=` is the connection test.
+- Actions: `escanear` (`Compartido conmigo/Facturacion/<MES>/<Cliente>` listings; folder names have trailing spaces, compare with `norm`), `files` (base64; only files under Facturacion or root `OC-<año>`), `carpetas` (contents of the new and the legacy `OC-<año>/<MES>/OC-<n>` folders), `subir` (`OC-<año>/<Cliente>/OC-<n>`; never deletes: remitos get " (2)", an invoice with the same name is reused), `planillaAgregar`, `planillaMarcar`, `enviarMail` (only to `CONFIG.destinatarios`).
+- The Facturación file is a **Google Sheet** in the Facturacion folder (not an .xlsx). 1st sheet = Grupo L, 2nd = Cook Master (by position; names are not in the repo). Columns are found by header text (`Nº FACT`, `TIPO FACT`, `DESCRIPCIÓN`, `SUBTOTAL`, `IVA`, `FINAL`, `REMITOS ENV`, `FC (MAIL O PORTAL)`, `ESTADO`; the date column has a blank header). Each month is a block closed by a row with the month name in column A and `=SUM(G..:G..)` totals. `planillaAgregar` writes into the first free row of the block whose dates have the right year, or `insertCells` on A:O only (a side table lives from column Q/R) and fixes the `SUM` end, or creates a new month block. It refuses duplicates (same Nº, tipo and total). Never delete or rewrite existing rows.
+- Invoice "TIPO FACT" codes: 001 → `A`, 201 → `eA`, 003 → `NC FC<n>`, 203 → `NC eA<n>` (n = associated invoice), see `FactParse.planillaTipo`.
+- Test `planillaAgregar` in Node with a mocked `SpreadsheetApp` (vm context); test the app with Playwright routing `https://script.google.com/**` to a mock bridge.
+- If you change the payload or an action, the owner must redeploy the bridge. Say so explicitly in the release notes.
 
 ### Authentication (v8.2)
 
@@ -217,7 +222,7 @@ This is a Google Apps Script web app that is **not in this repo**. Its instructi
 
 Each change ships as a version number. Bump it in all of these places together:
 
-- `APP_VERSION` in `scanner.js`.
+- `APP_VERSION` in `app.js`.
 - `#verTag`, `#verLabel` and `.auth-ver` in `index.html`.
 - `VERSION` in `sw.js`, as `remitos-vX.Y.Z`. This also invalidates old caches.
 

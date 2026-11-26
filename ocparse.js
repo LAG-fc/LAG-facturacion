@@ -113,6 +113,60 @@
     return out;
   }
 
+  // ---------- 1 bis) OC de Grupo L (formato SAP, montos en formato argentino: 3.100,00) ----------
+  const AR_MONEY = /^-?\d{1,3}(?:\.\d{3})*,\d{2,3}$/;
+  function parseOcSap(pages) {
+    const out = { format: "sap", ocNumber: "", emission: "", delivery: "", address: "", deliveryDate: "", items: [], totals: { subtotal: null, discount: 0, total: null, ivas: [] }, warnings: [] };
+    const ITEM = /^(\d{1,4})\s+(\d{4,})\s+(?:EAN:\s*\d+\s+)?(.*?)\s*(\d{1,3}(?:\.\d{3})*,\d{3})\s+([A-Z]{1,5})\s+(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,3}(?:\.\d{3})*,\d{2})(?:\s+ARS)?$/;
+    pages.forEach((pg) => {
+      const rows = groupRows(pg.items);
+      let cur = null, wantPlace = false;
+      for (const r of rows) {
+        const texts = r.cells.map((c) => c.str.trim()).filter(Boolean), joined = texts.join(" ").replace(/\s+/g, " ").trim();
+        let m;
+        if (!out.ocNumber && (m = /ORDEN DE COMPRA N[Ooº°]\.?:?\s*(\d{5,})/i.exec(joined))) out.ocNumber = m[1];
+        if (!out.emission && (m = /FECHA DE EMISI[OÓ]N:?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i.exec(joined))) out.emission = m[1].padStart(2, "0") + "-" + m[2].padStart(2, "0") + "-" + m[3];
+        if (!out.deliveryDate && (m = /FECHA (?:DE )?ENTREGA:?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i.exec(joined))) out.deliveryDate = m[1].padStart(2, "0") + "-" + m[2].padStart(2, "0") + "-" + m[3];
+        if (wantPlace) {                                     // la fila siguiente a "LUGAR DE ENTREGA:" trae el lugar (columna derecha)
+          const right = r.cells.filter((c) => c.x > 250).map((c) => c.str.trim()).filter(Boolean);
+          if (right.length) { out.delivery = right.join(" "); wantPlace = false; }
+        }
+        if (!out.delivery && /LUGAR DE ENTREGA:?\s*$/i.test(joined)) wantPlace = true;
+        if ((m = /^TOTAL:?\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*(?:ARS)?$/i.exec(joined))) { out.totals.subtotal = parseNumber(m[1]); cur = null; continue; }
+        if ((m = ITEM.exec(joined))) {
+          cur = { raw: m[3], qty: parseNumber(m[4]), unit: m[5], price: parseNumber(m[9]) };
+          out.items.push(cur);
+          continue;
+        }
+        // Continuación de la descripción (renglón de texto debajo del producto) y valor total partido en renglones
+        if (cur) {
+          const words = texts.filter((t) => !AR_MONEY.test(t) && !/^[\d.,]+$/.test(t));
+          if (words.length && words.join(" ").length < 60 && !/^(NOTA|TERMINOS|TOTAL)/i.test(words[0])) cur.raw += " " + words.join(" ");
+          else if (!texts.every((t) => /^[\d.,]+$/.test(t))) cur = null;
+        }
+      }
+    });
+    out.items = out.items.map((it) => {
+      const desc = it.raw.replace(/^VO\s+/i, "").replace(/\s+/g, " ").trim();
+      return { desc, price: it.price, qty: it.qty, importe: round(it.qty * it.price, 2), mark: null, iva: null, ivaSrc: "", unit: it.unit };
+    });
+    const sum = round(out.items.reduce((t, it) => t + it.importe, 0), 2);
+    if (out.totals.subtotal !== null && Math.abs(sum - out.totals.subtotal) > 1) out.warnings.push("La suma de los productos ($ " + fmtMoney(sum) + ") no coincide con el total de la OC ($ " + fmtMoney(out.totals.subtotal) + ").");
+    return out;
+  }
+  // Elige el lector según el formato del PDF (Cook Master o Grupo L/SAP)
+  function isSap(pages) {
+    return (pages || []).some((p) => (p.items || []).some((it) => /ORDEN DE COMPRA N[Ooº°]\.?:|PROVEEDOR SAP/i.test(it.str)));
+  }
+  function parseAnyOc(pages) {
+    if (isSap(pages)) return parseOcSap(pages);
+    const oc = parseOc(pages); oc.format = "cookmaster"; return oc;
+  }
+  // Nombre corto de un producto de la OC (para la tabla de recepciones): sin la presentación ("- KILOGRAMOS X 1KG.")
+  function shortName(desc) {
+    return String(desc || "").replace(/\s+-\s+(?:\d+\s+)?(?:KILOGRAMOS?|UNIDAD(?:ES)?|PAQUETES?|BOLSAS?|CAJAS?)\b.*$/i, "").replace(/^EAN:\s*\d+\s+/i, "").replace(/^VO\s+/i, "").replace(/\s+/g, " ").trim();
+  }
+
   // ---------- 2) Deducir el IVA de cada producto ----------
   // Subconjuntos de "values" (centavos) cuya suma esté en [lo, hi]. Devuelve máscaras (bit j = values[j]).
   function subsetsInRange(values, lo, hi, cap) {
@@ -206,7 +260,7 @@
   }
 
   // ---------- 3) Tabla pegada desde Excel ----------
-  const STOP = new Set(["DE", "DEL", "LA", "EL", "Y", "X", "UN", "UNA", "UNIDAD", "UNIDADES", "KILOGRAMO", "KILOGRAMOS", "KILO", "KILOS", "KG", "KGS", "GR", "GRS", "G", "CM", "1"]);
+  const STOP = new Set(["DE", "DEL", "LA", "EL", "Y", "X", "UN", "UNA", "UNIDAD", "UNIDADES", "KILOGRAMO", "KILOGRAMOS", "KILO", "KILOS", "KG", "KGS", "XKG", "XKGS", "GR", "GRS", "G", "CM", "1"]);
   function tokens(name) {
     let s = String(name).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     s = s.replace(/\([^)]*\)/g, " ").replace(/(\d)([A-Z])/g, "$1 $2").replace(/([A-Z])(\d)/g, "$1 $2");
@@ -299,6 +353,6 @@
     return [head].concat(lines.map((l) => [l.desc, plain(l.qty, 0, 3), plain(l.price, 2, 3), l.iva === null || l.iva === undefined ? "" : fmtRate(l.iva)].join("\t"))).join("\n");
   }
 
-  const api = { parseOc, solveIva, checkIva, parsePasted, matchRows, buildInvoice, toTsv, keyOf, tokens, parseNumber, parseUS, fmtMoney, fmtQty, fmtRate, round };
+  const api = { parseOc, parseOcSap, parseAnyOc, isSap, shortName, solveIva, checkIva, parsePasted, matchRows, buildInvoice, toTsv, keyOf, tokens, parseNumber, parseUS, fmtMoney, fmtQty, fmtRate, round };
   if (typeof module === "object" && module.exports) module.exports = api; else root.OcParse = api;
 })(typeof self !== "undefined" ? self : this);

@@ -9,7 +9,7 @@
   // kind "pan": ese cliente lleva solamente PAN MIGNON BLANCO; la hoja anterior trae solo totales, así que se lee la lista diaria de la hoja del cliente.
   const CLIENTS = [
     { id: "cc", name: "Centro de Contención", sheet: "CC Malvinas", kind: "tabla", hints: [/CENTRO.*CONTENCI/, /\bCC\b/] },
-    { id: "cs", name: "Penal de Menores", sheet: "CS Malvinas", kind: "tabla", hints: [/MENORES/, /\bCS\b/, /CENTRO.*SEGURIDAD/] },
+    { id: "cs", name: "Penal de Menores", sheet: "CS Malvinas", kind: "tabla", hints: [/MENORES/, /\bCS\b/, /CENTRO.*SEGURIDAD/, /\bC?S?PLA\b.*MALVINAS/] },
     { id: "lp", name: "La Plata", sheet: "SAE La Plata", kind: "pan", hints: [/LA PLATA/] },
     { id: "up59", name: "UP 59", sheet: "Merlo", kind: "pan", hints: [/\bUP\s*N?[°º.]?\s*59\b/, /UNIDAD.*\b59\b/, /\b59\b/], title: /\bUP\s*N?[°º.]?\s*59\b|UNIDAD\s+PENITENCIARIA\s*N?[°º.]?\s*59\b/, mrow: 1 },
     { id: "up60", name: "UP 60", sheet: "Merlo", kind: "pan", hints: [/\bUP\s*N?[°º.]?\s*60\b/, /UNIDAD.*\b60\b/, /\b60\b/], title: /\bUP\s*N?[°º.]?\s*60\b|UNIDAD\s+PENITENCIARIA\s*N?[°º.]?\s*60\b/, mrow: 2 },
@@ -164,6 +164,19 @@
       const n = (r || []).map((c) => norm(txt(c))); return n.some((x) => /^FECHA/.test(x)) && n.some((x) => /^INGREDIENTE|^PRODUCTO/.test(x)) && n.some((x) => /^CANT/.test(x));
     }));
   }
+  // Hoja del Excel para una sede que no es fija (Vuce Berazategui, CS Virrey del Pino…): la que más se parece al lugar
+  // de entrega de la OC (por el nombre de la hoja o por el comedor que figura en sus renglones).
+  function findOtherSheet(wb, delivery) {
+    const words = (s) => norm(s).split(/[^A-Z0-9]+/).filter((w) => w.length > 2 && !/^(DEL|LOS|LAS|SAE|DMC)$/.test(w));
+    const want = new Set(words(delivery)); if (!want.size) return null;
+    let best = null, bestScore = 0;
+    for (const sh of otherSheets(wb)) {
+      const names = new Set([sh.name]); (sh.rows || []).slice(1, 40).forEach((r) => { if (r && typeof r[1] === "string") names.add(r[1]); });
+      let score = 0; names.forEach((n) => { const w = words(n); const hit = w.filter((x) => want.has(x)).length; if (hit > score) score = hit; });
+      if (score > bestScore) { bestScore = score; best = sh.name; }
+    }
+    return best;
+  }
   function extractOther(wb, sheetName, range, month) {
     const out = { rows: [], warnings: [], info: "", error: "" };
     if (!range) { out.error = "Elegí el período (quincena, mes o días)."; return out; }
@@ -192,6 +205,6 @@
     return out;
   }
 
-  const api = { CLIENTS, clientById, suggestClient, defaultPeriodMode, periodRange, findSheet, sheetsFor, extractTable, periodLabel, otherSheets, extractOther, norm };
+  const api = { CLIENTS, clientById, findOtherSheet, suggestClient, defaultPeriodMode, periodRange, findSheet, sheetsFor, extractTable, periodLabel, otherSheets, extractOther, norm };
   if (typeof module === "object" && module.exports) module.exports = api; else root.Despachos = api;
 })(typeof self !== "undefined" ? self : this);

@@ -1,4 +1,4 @@
-// firestore.rules — Reglas de seguridad de la base de datos (Cloud Firestore), v8.3.
+// firestore.rules — Reglas de seguridad de la base de datos (Cloud Firestore), v9.0.
 // Se copian y pegan en: Firebase console > Firestore Database > Reglas > Publicar.
 // (Ver INSTRUCCIONES-USUARIOS.txt, paso 5.)
 //
@@ -14,6 +14,9 @@
 // Subcolección "usuarios/<uid>/lotes" (v8.3): los "PDF guardados" de cada persona (remitos escaneados) y,
 // dentro de cada lote, "partes" con las fotos. Solo la propia persona, con la cuenta aprobada, puede verlos,
 // crearlos, cambiarlos y borrarlos. Ni siquiera un administrador ve los lotes de otros.
+//
+// Subcolección "usuarios/<uid>/unidades" (v9.0): el estado de cada OC + período (tabla confirmada, PDF de remitos en
+// Drive, factura cargada, Portal / Mail, fila de la planilla, mail enviado). Mismas condiciones que los lotes.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -47,6 +50,14 @@ service cloud.firestore {
         && d.estado in ['pendiente', 'lista', 'enviado']
         && d.miniatura is string && d.miniatura.size() <= 200000
         && d.tabla is map;
+    }
+    function validUnidad(d) {
+      return d.keys().hasOnly(['key', 'cliente', 'oc', 'periodo', 'lote', 'confirmacion', 'tablaReal', 'despachos', 'remitos',
+                               'pdf', 'factura', 'envio', 'planilla', 'mail', 'wpp', 'creado', 'actualizado'])
+        && d.cliente in ['cookmaster', 'grupol']
+        && d.oc is string && d.oc.size() >= 1 && d.oc.size() <= 20
+        && d.periodo is map
+        && d.size() <= 40;
     }
     function validParte(d) {
       return d.keys().hasOnly(['pagina', 'parte', 'de', 'w', 'h', 'datos'])
@@ -92,6 +103,12 @@ service cloud.firestore {
           allow read, delete: if isOwnerApproved(uid);
           allow create, update: if isOwnerApproved(uid) && validParte(request.resource.data);
         }
+      }
+
+      // Estado de cada OC + período (v9.0)
+      match /unidades/{unidadId} {
+        allow read, delete: if isOwnerApproved(uid);
+        allow create, update: if isOwnerApproved(uid) && validUnidad(request.resource.data);
       }
     }
 

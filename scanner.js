@@ -1,51 +1,34 @@
+// scanner.js — Remitos: cámara, captura, recorte y realce de la hoja, lista de fotos del lote actual y "Guardar remitos".
+// La OC y el período se eligen de las unidades leídas de Drive (Datos.units): Cook Master por quincena (un remito por
+// día: 15 o 16), Grupo L por la semana de su Excel de despachos. También se puede escribir otra OC a mano.
+// La tabla de recepciones, la comparación con el Excel y el PDF en Drive están en lotes.js.
 (() => {
   "use strict";
-  const APP_VERSION = "8.8";
+  const A = window.App, P = window.Period, $ = (id) => document.getElementById(id);
   const COMPANY = "LAG PANIFICADOS SRL";
-  const $ = (id) => document.getElementById(id);
 
   const video = $("video"), overlay = $("overlay"), videoWrap = $("videoWrap"), detectPill = $("detectPill");
   const cameraSelect = $("cameraSelect"), filterSelect = $("filterSelect"), autoCropChk = $("autoCrop");
   const captureBtn = $("captureBtn"), captureLabel = $("captureLabel"), uploadBtn = $("uploadBtn"), fileInput = $("fileInput");
-  const saveBtn = $("saveBtn"), saveLabel = $("saveLabel"), clearBtn = $("clearBtn"), settingsBtn = $("settingsBtn");
+  const saveBtn = $("saveBtn"), saveLabel = $("saveLabel"), clearBtn = $("clearBtn");
   const thumbs = $("thumbs"), countEl = $("count"), emptyEl = $("empty"), pagesPanel = $("pagesPanel");
   const statusEl = $("status"), cameraMsg = $("cameraMsg"), flash = $("flash");
-  const settingsDialog = $("settingsDialog"), catalogInput = $("catalogInput"), hiResChk = $("hiResChk");
-  const msgDialog = $("msgDialog"), msgText = $("msgText"), msgOk = $("msgOk"), msgCancel = $("msgCancel");
   const previewDialog = $("previewDialog"), previewImg = $("previewImg");
 
-  const DEFAULT_CATALOG = [
-    "PAN MIGNON BLANCO", "PAN MIGNON DE SALVADO", "PAN FRANCES", "PAN MIGNON BLANCO SIN SAL",
-    "PAN DE SALVADO SIN SAL", "FIGACITAS DE MANTECA", "LIBRITOS DE GRASA", "BIZCOCHUELO DE VAINILLA 50 X 80",
-    "MEDIALUNAS DE MANTECA", "MEDIALUNAS PARA RELLENAR", "PAN DE HAMBURGUESA", "PEBETE",
-    "SANDWICH DE MIGA TRIPLE", "PIONONO", "PREPIZZA", "PAN ARABE", "PAN DE MOLDE CON SEMILLA", "PAN CIABATTA"
-  ];
-  const DEFAULTS = { autoCrop: true, filterMode: "mejorado", periodMode: "semanal", bridgeUrl: "", bridgeKey: "", hiRes: true, catalog: DEFAULT_CATALOG.join("\n"), oc: "" };
-  let settings = { ...DEFAULTS };
+  const settings = () => A.settings();
+  const askConfirm = A.askConfirm, showMessage = A.showMessage;
   let stream = null;
   let stillOk = null;               // null = sin probar; true/false = se puede / no se puede la foto de máxima resolución
   let pages = [];                   // {id, blob, w, h, url, thumbUrl, status: processing|ok|error, busy}
   let nextPageId = 1;
   let epoch = 0;                    // sube cada vez que se vacía todo: lo que estaba en proceso se descarta
   let grabbing = false;
-  let suspended = false;            // true mientras se está en la sección "Órdenes de compra": la cámara queda apagada
-  let saving = false;               // true mientras se guardan las fotos como "PDF guardado"
+  let suspended = true;             // la cámara solo está prendida en la sección Remitos (y con la sesión iniciada)
+  let saving = false;               // true mientras se guardan las fotos
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const toBlob = (canvas, q = 0.9) => new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
   const anyDialogOpen = () => !!document.querySelector("dialog[open]");
-
-  // ---------- Ajustes (se guardan en el navegador) ----------
-  function loadSettings() {
-    try {
-      const st = { ...DEFAULTS, ...JSON.parse(localStorage.getItem("settings") || "{}") };
-      ["apiKey", "sensitivity", "decimals", "catalogVersion", "lector", "zones", "lecturaPreguntar"].forEach((k) => delete st[k]);   // restos de versiones anteriores
-      ["visionUsage", "rlV8", "despDia", "totals", "lecturaAlias"].forEach((k) => localStorage.removeItem(k));   // lectores de cantidades (v8.0-8.7) y tabla suelta
-      return st;
-    } catch (e) { return { ...DEFAULTS }; }
-  }
-  function persistSettings() { try { localStorage.setItem("settings", JSON.stringify(settings)); } catch (e) { /* nada */ } }
-  const catalogList = () => String(settings.catalog || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
 
   let statusTimer = null;
   function setStatus(msg, ms = 3500) {
@@ -53,23 +36,6 @@
     clearTimeout(statusTimer);
     if (ms) statusTimer = setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ""; }, ms);
   }
-
-  // Avisos y preguntas propios de la página. Los cuadros nativos (alert/confirm) congelan la cámara en el
-  // celular, por eso no se usan.
-  function askConfirm(text, okLabel, cancelLabel) {
-    return new Promise((resolve) => {
-      msgText.textContent = text;
-      msgOk.textContent = okLabel || "Aceptar";
-      msgCancel.textContent = cancelLabel || "Cancelar";
-      msgCancel.hidden = cancelLabel === null;
-      const done = (v) => { msgOk.onclick = msgCancel.onclick = msgDialog.oncancel = null; if (msgDialog.open) msgDialog.close(); resolve(v); };
-      msgOk.onclick = () => done(true);
-      msgCancel.onclick = () => done(false);
-      msgDialog.oncancel = (e) => { e.preventDefault(); done(false); };
-      if (!msgDialog.open) msgDialog.showModal();
-    });
-  }
-  const showMessage = (text) => askConfirm(text, "Entendido", null);
 
   // ---------- Cámara ----------
   async function startCamera(deviceId) {
@@ -395,7 +361,7 @@
   }
 
   async function grabFrame() {
-    if (settings.hiRes) {
+    if (settings().hiRes) {
       const bmp = await takeStill();
       if (bmp) {
         const c = document.createElement("canvas");
@@ -518,6 +484,7 @@
     emptyEl.hidden = pages.length > 0;
     thumbs.hidden = pages.length === 0;
     saveBtn.disabled = pages.length === 0 || saving;
+    if (typeof unitsReady !== "undefined" && unitsReady) refreshUnit();
     clearBtn.disabled = pages.length === 0 || saving;
   }
 
@@ -576,48 +543,81 @@
     if (await askConfirm("¿Borrar todas las fotos que todavía no guardaste?", "Sí, vaciar todo", "Cancelar")) clearAll();
   });
 
-  // ---------- Período (semanal / quincenal) ----------
-  // Se calcula con la fecha en que se guardan las fotos; en cada PDF guardado se puede cambiar después.
-  const currentPeriod = () => Period.forDate(settings.periodMode === "quincenal" ? "quincenal" : "semanal", new Date());
-  const periodSeg = $("periodSeg"), periodText = $("periodText"), periodSub = $("periodSub");
+  // ---------- OC y período a escanear ----------
+  // Lista de unidades (OC + período) leídas de Drive. "manual" = escribir otra OC con el período semanal/quincenal.
+  const unitSel = $("scanUnit"), manualBox = $("manualOc"), scanOc = $("scanOc"), scanOcWrap = $("scanOcWrap");
+  const periodSeg = $("periodSeg"), periodText = $("periodText"), periodSub = $("periodSub"), unitInfo = $("unitInfo");
+  let unitList = [];
+  var unitsReady = true;              // (var: se puede consultar antes de esta línea sin error)
+  const esc = A.esc;
+  const unitLabel = (u) => "OC " + u.oc.numero + " · " + (u.cliente === "grupol" ? "Grupo L" : window.Flujo.sedeLabel(u.oc) || "Cook Master") + " · " + P.text(u.periodo) + "/" + u.periodo.month;
+  const manualPeriod = () => P.forDate(settings().periodMode === "quincenal" ? "quincenal" : "semanal", new Date());
 
-  function refreshPeriod() {
-    const p = currentPeriod();
-    periodSeg.querySelectorAll(".seg-btn").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mode === p.mode)));
-    periodText.textContent = "día " + Period.text(p);
-    periodSub.textContent = "(" + p.label + ")";
+  function fillUnits() {
+    const all = window.Datos ? window.Datos.units() : [];
+    // Se ofrecen las que ya empezaron y todavía no tienen el PDF de remitos en Drive (más la elegida)
+    unitList = all.filter((u) => u.started && !u.oc.missing && (u.progreso.pasos[0].estado !== "hecho" || u.key === settings().unidad));
+    const groups = { cookmaster: [], grupol: [] };
+    unitList.forEach((u) => groups[u.cliente].push(u));
+    let h = "";
+    [["cookmaster", "Cook Master"], ["grupol", "Grupo L"]].forEach(([k, name]) => {
+      if (!groups[k].length) return;
+      h += '<optgroup label="' + name + '">' + groups[k].map((u) => '<option value="' + esc(u.key) + '">' + esc(unitLabel(u)) + (u.lote ? " · ya escaneados" : "") + "</option>").join("") + "</optgroup>";
+    });
+    h += '<option value="manual">Otra OC (escribirla a mano)…</option>';
+    unitSel.innerHTML = h;
+    let want = settings().unidad;
+    if (!want || (want !== "manual" && !unitList.some((u) => u.key === want))) {
+      const cur = unitList.find((u) => !u.lote && u.cliente === "cookmaster" && P.same(u.periodo, P.forDate("quincenal"))) || unitList.find((u) => !u.lote) || unitList[0];
+      want = cur ? cur.key : "manual";
+    }
+    unitSel.value = want;
+    refreshUnit();
   }
+  const selectedUnit = () => unitList.find((u) => u.key === unitSel.value) || null;
+  function refreshUnit() {
+    const manual = unitSel.value === "manual", u = selectedUnit();
+    manualBox.hidden = !manual;
+    let chips = [];
+    if (manual) {
+      const p = manualPeriod();
+      periodSeg.querySelectorAll(".seg-btn").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mode === p.mode)));
+      periodText.textContent = "día " + P.text(p);
+      periodSub.textContent = "(" + p.label + ")";
+      scanOcWrap.classList.toggle("no-oc", !P.cleanOc(settings().oc));
+      chips.push('<span class="chip">OC escrita a mano: no se compara con Drive hasta que la OC esté en la carpeta del mes</span>');
+    } else if (u) {
+      const esperados = u.cliente === "cookmaster" ? P.days(u.periodo) : null;
+      chips.push('<span class="chip wine">' + (u.cliente === "grupol" ? "Grupo L · semana" : "Cook Master · " + esc(u.periodo.label)) + "</span>");
+      if (u.cliente === "cookmaster") chips.push('<span class="chip">' + esc(window.Flujo.sedeNombre(u.oc)) + "</span>");
+      chips.push('<span class="chip ' + (esperados && pages.length === esperados ? "ok" : "info") + '">' + (esperados ? pages.length + " de " + esperados + " remitos (uno por día)" : pages.length + (pages.length === 1 ? " remito" : " remitos")) + "</span>");
+      if (u.lote) chips.push('<span class="chip warn">Ya hay remitos guardados de este período: lo nuevo queda como otro lote</span>');
+    } else chips.push('<span class="chip warn">Leyendo las OC de Drive…</span>');
+    unitInfo.innerHTML = chips.join("");
+    $("saveHint").textContent = manual
+      ? (P.cleanOc(settings().oc) ? "Se guardan con la OC " + P.cleanOc(settings().oc) + "." : "Escribí la OC arriba antes de guardar.") + " Después abrís el lote, cargás la tabla de recepciones y la confirmás."
+      : u ? "Se guardan como remitos de la OC " + u.oc.numero + " (" + P.text(u.periodo) + "). Después abrís el lote, cargás la tabla de recepciones y se compara con el Excel de despachos."
+      : "";
+  }
+  unitSel.addEventListener("change", () => { settings().unidad = unitSel.value; A.saveSettings(); refreshUnit(); });
   periodSeg.addEventListener("click", (e) => {
-    const b = e.target.closest(".seg-btn");
-    if (!b) return;
-    settings.periodMode = b.dataset.mode;
-    persistSettings();
-    refreshPeriod();
+    const b = e.target.closest(".seg-btn"); if (!b) return;
+    settings().periodMode = b.dataset.mode; A.saveSettings(); refreshUnit();
   });
-  setInterval(refreshPeriod, 60000);
-
-  // ---------- Orden de compra (OC) ----------
-  // Se elige antes de escanear y se guarda con los remitos (queda en el título del PDF guardado, el nombre del PDF y la
-  // carpeta de Drive). Después de "Guardar remitos" se borra, para que el próximo lote no salga con la OC anterior.
-  const scanOc = $("scanOc"), scanOcWrap = $("scanOcWrap");
-  function refreshOc() {
-    const oc = Period.cleanOc(settings.oc);
-    scanOcWrap.classList.toggle("no-oc", !oc);
-    $("saveHint").textContent = oc
-      ? "Se guardan con la OC " + oc + " en “PDF guardados”. Después cargás la tabla de recepciones desde la computadora y tocás “Guardar PDF”."
-      : "Elegí la OC arriba antes de escanear. Al guardar, los remitos quedan en “PDF guardados”: después cargás la tabla de recepciones desde la computadora y tocás “Guardar PDF”.";
-  }
   scanOc.addEventListener("input", () => {
-    const c = Period.cleanOc(scanOc.value);
+    const c = P.cleanOc(scanOc.value);
     if (c !== scanOc.value) scanOc.value = c;
-    settings.oc = c; persistSettings(); refreshOc();
+    settings().oc = c; A.saveSettings(); refreshUnit();
   });
   scanOc.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); scanOc.blur(); } });
+  A.on("datos", () => { if (!saving) fillUnits(); });
+  A.on("lotes", () => { if (!saving && !suspended) fillUnits(); });
+  // Desde Inicio ("Escanear") llega la OC y el período elegidos
+  A.on("view", (e) => { if (e.view === "remitos" && e.params && e.params.unit) { settings().unidad = e.params.unit; A.saveSettings(); fillUnits(); } });
 
   // ---------- Guardar remitos ----------
-  // Las fotos se guardan como un "PDF guardado" (lotes.js) con la OC elegida: en la cuenta del usuario si hay sesión,
-  // si no en este dispositivo. La tabla de recepciones y "Guardar PDF" (Drive + borrador de Gmail) se hacen después,
-  // desde la computadora o cualquier otro dispositivo.
+  // Las fotos se guardan como un lote (lotes.js) con la OC y el período elegidos: en la cuenta si hay sesión, si no
+  // en este dispositivo. La tabla de recepciones se completa después, desde la computadora o el celular.
   function setSaving(on, label) {
     saving = on;
     saveLabel.textContent = label || "Guardar remitos";
@@ -632,22 +632,28 @@
     if (errors && !(await askConfirm(errors + " foto(s) no se pudieron procesar y no se van a guardar.\n\n¿Seguir igual?", "Seguir", "Cancelar"))) return;
     const ok = pages.filter((p) => p.status === "ok" && p.blob);
     if (!ok.length) { await showMessage("No hay fotos listas para guardar."); return; }
-    const oc = Period.cleanOc(settings.oc);
-    if (!oc && !(await askConfirm("No elegiste la orden de compra (OC).\n\n¿Guardar los remitos igual? La OC la podés escribir después, al cargar la tabla de recepciones.", "Guardar sin OC", "Elegir la OC"))) {
-      scanOc.focus(); return;
+    const manual = unitSel.value === "manual", u = selectedUnit();
+    let oc, periodo, cliente;
+    if (manual || !u) {
+      oc = P.cleanOc(settings().oc); periodo = manualPeriod(); cliente = "";
+      if (!oc && !(await askConfirm("No escribiste la orden de compra (OC).\n\n¿Guardar los remitos igual? La OC la podés escribir después, al cargar la tabla de recepciones.", "Guardar sin OC", "Escribir la OC"))) { scanOc.focus(); return; }
+    } else {
+      oc = u.oc.numero; periodo = u.periodo; cliente = u.cliente;
+      const esperados = cliente === "cookmaster" ? P.days(periodo) : 0;
+      if (esperados && ok.length !== esperados && !(await askConfirm("Para la " + periodo.label + " (" + P.text(periodo) + ") se esperan " + esperados + " remitos (uno por día) y hay " + ok.length + ".\n\n¿Guardar igual?", "Guardar igual", "Seguir escaneando"))) return;
     }
     const e0 = epoch;
     setSaving(true, "Guardando…");
     try {
       const shots = ok.map((p) => ({ blob: p.blob, w: p.w, h: p.h, thumb: p.thumbUrl }));
-      const r = await window.Lotes.saveBatch(shots, currentPeriod(), (done, total) => setSaving(true, "Subiendo " + done + " de " + total + "…"), { oc });
+      const r = await window.Lotes.saveBatch(shots, periodo, (done, total) => setSaving(true, "Subiendo " + done + " de " + total + "…"), { oc, cliente });
       setSaving(false);
-      if (Period.cleanOc(settings.oc) === oc) { settings.oc = ""; scanOc.value = ""; persistSettings(); refreshOc(); }
+      if (manual && P.cleanOc(settings().oc) === oc) { settings().oc = ""; scanOc.value = ""; A.saveSettings(); }
       const what = (oc ? "OC " + oc + " · " : "") + ok.length + (ok.length === 1 ? " remito" : " remitos");
-      if (e0 === epoch) clearAll(r.cloud
-        ? "Guardado ✔ " + what + ". Está en “PDF guardados”: cargá la tabla de recepciones desde la computadora y tocá “Guardar PDF”."
-        : "Guardado en este dispositivo ✔ " + what + ". " + (r.reason || ""));
+      if (e0 === epoch) clearAll(r.cloud ? "Guardado ✔ " + what + "." : "Guardado en este dispositivo ✔ " + what + ". " + (r.reason || ""));
+      A.toast("Remitos guardados ✔ " + what, { action: "Cargar la tabla", onAction: () => window.Lotes.open(r.id) });
       if (!r.cloud && r.reason) await showMessage("Los remitos quedaron guardados en este dispositivo, pero no se pudieron subir a tu cuenta:\n\n" + r.reason + "\n\nSe vuelve a intentar solo; también podés tocar “Subir” en la lista.");
+      fillUnits();
     } catch (e) {
       console.error(e);
       setSaving(false);
@@ -655,161 +661,45 @@
     }
   });
 
-  // ---------- Puente a Google Drive y Gmail (lo usa lotes.js para enviar) ----------
-  const bridgeReady = () => /^https:\/\/script\.google(usercontent)?\.com\//.test(String(settings.bridgeUrl || "").trim()) && !!String(settings.bridgeKey || "").trim();
-  const blobToBase64 = (blob) => new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result).split(",")[1] || "");
-    r.onerror = () => rej(new Error("No se pudo leer el PDF"));
-    r.readAsDataURL(blob);
-  });
-  // Envía el PDF al puente. Lanza Error con un mensaje claro si algo falla.
-  async function sendToBridge(pdfBlob, name, oc, period) {
-    const MAX = 17 * 1024 * 1024;                      // Gmail admite ~25 MB; en base64 el archivo crece un tercio
-    if (pdfBlob.size > MAX) throw new Error("El PDF pesa " + (pdfBlob.size / 1048576).toFixed(1) + " MB y es demasiado grande para adjuntarlo en Gmail (máximo ~17 MB). Dividí el lote en dos.");
-    const now = new Date();
-    const payload = {
-      key: String(settings.bridgeKey).trim(), oc, filename: name, year: period.year, month: period.month,
-      subject: Period.emailSubject(oc, period), body: Period.emailBody(oc, period, now),
-      pdf: await blobToBase64(pdfBlob)
-    };
-    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 180000);
-    let res;
-    try {
-      res = await fetch(String(settings.bridgeUrl).trim(), { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload), redirect: "follow", signal: ctl.signal });
-    } catch (e) {
-      throw new Error(e.name === "AbortError" ? "El envío tardó demasiado (probá con mejor señal)." : "No se pudo completar la conexión con Google (revisá internet y la dirección del puente). Si dudás, mirá Drive y los Borradores de Gmail antes de reintentar, por si el envío sí llegó.");
-    } finally { clearTimeout(timer); }
-    let out;
-    try { out = await res.json(); }
-    catch (e) { throw new Error("El puente no respondió como se esperaba. Revisá que esté implementado con acceso “Cualquier persona”."); }
-    if (!out.ok) throw new Error(out.error === "Clave incorrecta" ? "La clave del puente no coincide (revisá Ajustes)." : "El puente informó: " + (out.error || "error desconocido"));
-    return out;
-  }
-
-  function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-  }
-
-  // Arma el PDF de un lote: pages = [{bytes (JPEG), w, h}], rows = [{name, qtyText, cells: [texto por remito]}],
-  // cols = cantidad de remitos (columnas de la tabla de recepciones)
-  const b64ToBytes = (b64) => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
-  function makePdf(data, name, oc, period, rows, cols) {
-    const L = window.LOGO_PDF;
+  // ---------- PDF de un lote (lo usa lotes.js) ----------
+  // pages = [{bytes (JPEG), w, h}], rows = [{name, qtyText, cells: [texto por remito]}], cols = cantidad de remitos.
+  // opts = {title, note}: título y nota de la tabla (por ejemplo, cuando se usan los despachos reales).
+  function makePdf(data, name, oc, period, rows, cols, opts) {
+    const L = window.LOGO_PDF, o = opts || {};
     const d = new Date(), pad = (n) => String(n).padStart(2, "0");
     return buildPdf(data, {
-      company: COMPANY, title: name, oc, periodText: Period.text(period),
+      company: COMPANY, title: name, oc, periodText: P.text(period),
       date: pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear(),
-      logo: L ? { bytes: b64ToBytes(L.b64), w: L.w, h: L.h } : null,
-      summary: rows.length ? { rows, cols: cols || 0, note: "Cantidades ingresadas manualmente por el responsable de recepción." } : null
+      logo: L ? { bytes: A.b64ToBytes(L.b64), w: L.w, h: L.h } : null,
+      summary: rows.length ? { rows, cols: cols || 0, title: o.title, note: o.note || "Cantidades ingresadas manualmente por el responsable de recepción." } : null
     });
   }
 
-  // ---------- Ajustes ----------
-  settingsBtn.addEventListener("click", () => {
-    catalogInput.value = settings.catalog;
-    hiResChk.checked = !!settings.hiRes;
-    $("bridgeUrl").value = settings.bridgeUrl || "";
-    $("bridgeKey").value = settings.bridgeKey || "";
-    $("bridgeMsg").textContent = ""; $("bridgeMsg").className = "bridge-msg";
-    settingsDialog.showModal();
-  });
-  $("cancelSettings").addEventListener("click", () => settingsDialog.close());
-  $("saveSettings").addEventListener("click", () => {
-    settings.catalog = catalogInput.value;
-    settings.hiRes = hiResChk.checked;
-    settings.bridgeUrl = $("bridgeUrl").value.trim();
-    settings.bridgeKey = $("bridgeKey").value.trim();
-    persistSettings();
-    settingsDialog.close();
-    if (window.RemitosApp.onSettings) { try { window.RemitosApp.onSettings(); } catch (e) { /* nada */ } }
-  });
-  $("bridgeTest").addEventListener("click", async () => {
-    const url = $("bridgeUrl").value.trim(), key = $("bridgeKey").value.trim(), msg = $("bridgeMsg");
-    const show = (t, good) => { msg.textContent = t; msg.className = "bridge-msg " + (good ? "good" : "bad"); };
-    if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) { show("La dirección debe empezar con https://script.google.com/…", false); return; }
-    if (!key) { show("Falta la clave.", false); return; }
-    show("Probando…", true);
-    try {
-      const res = await fetch(url + (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(key), { redirect: "follow" });
-      const out = await res.json();
-      if (out.ok) show("Conexión correcta ✔ (borradores para " + out.destinatario + ")", true);
-      else show(out.error === "Clave incorrecta" ? "La clave no coincide con la del puente." : "El puente respondió: " + out.error, false);
-    } catch (e) { show("No se pudo conectar. Revisá internet, la dirección y que el acceso sea “Cualquier persona”.", false); }
-  });
-  $("resetCatalog").addEventListener("click", () => { catalogInput.value = DEFAULT_CATALOG.join("\n"); });
-  filterSelect.addEventListener("change", () => { settings.filterMode = filterSelect.value; persistSettings(); });
-  autoCropChk.addEventListener("change", () => { settings.autoCrop = autoCropChk.checked; persistSettings(); drawLive(null); });
-
+  // ---------- Ajustes de la cámara ----------
+  filterSelect.addEventListener("change", () => { settings().filterMode = filterSelect.value; A.saveSettings(); });
+  autoCropChk.addEventListener("change", () => { settings().autoCrop = autoCropChk.checked; A.saveSettings(); drawLive(null); });
   window.addEventListener("beforeunload", () => { if (stream) stream.getTracks().forEach((t) => t.stop()); });
 
   // ---------- Inicio ----------
-  $("verTag").textContent = "v" + APP_VERSION;
-  $("verLabel").textContent = APP_VERSION;
-  settings = loadSettings();
-  if (settings.periodMode !== "quincenal") settings.periodMode = "semanal";
-  refreshPeriod();
-  settings.oc = Period.cleanOc(settings.oc);
-  scanOc.value = settings.oc;
-  refreshOc();
-  persistSettings();                 // limpia del navegador los datos de versiones anteriores
-  autoCropChk.checked = settings.autoCrop !== false;
-  filterSelect.value = settings.filterMode || "mejorado";
+  scanOc.value = P.cleanOc(settings().oc);
+  autoCropChk.checked = settings().autoCrop !== false;
+  filterSelect.value = settings().filterMode || "mejorado";
   syncCards();
   updateBusyUI();
-  suspended = true;                  // la cámara se enciende recién con la sesión iniciada (auth.js)
   liveLoop();
 
-  // ---------- Cambio de sección (lo usa oc.js) ----------
-  // Las dos secciones son excluyentes: al entrar a "Órdenes de compra" se apaga la cámara y se desactivan
-  // la barra espaciadora y el arrastrar-y-soltar de remitos; al volver, la cámara se enciende de nuevo.
+  // La cámara se prende solo en la sección Remitos (app.js llama a setActive al cambiar de sección).
   window.RemitosApp = {
     setActive(on) {
-      if (on) { if (!suspended) return; suspended = false; startCamera(cameraSelect.value || undefined); }
+      if (on) { if (!suspended) return; suspended = false; startCamera(cameraSelect.value || undefined); fillUnits(); }
       else {
+        if (suspended) return;
         suspended = true;
         if (stream) stream.getTracks().forEach((t) => t.stop());
         stream = null; video.srcObject = null; resetDragState();
       }
     },
     askConfirm, showMessage, setStatus,
-    // para los PDF guardados (lotes.js)
-    pages: () => pages, catalog: catalogList, settings: () => settings, defaultCatalog: () => DEFAULT_CATALOG.slice(),
-    bridgeReady, sendToBridge, downloadBlob, makePdf, toBlob, fitCanvas,
-    onSettings: null
+    pages: () => pages, catalog: A.catalog, settings, bridgeReady: A.bridgeReady, downloadBlob: A.downloadBlob, makePdf, toBlob, fitCanvas, refreshUnits: fillUnits
   };
-  // Con el ingreso de usuarios (auth.js), la cámara espera a que la cuenta esté habilitada.
-  if (window.LAGAuth) window.LAGAuth.onUnlock(() => window.RemitosApp.setActive(true));
-  else window.RemitosApp.setActive(true);
-
-  // ---------- Instalación como aplicación ----------
-  const installBtn = $("installBtn");
-  let installEvt = null;
-  const isStandalone = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    installEvt = e;
-    if (!isStandalone()) installBtn.hidden = false;
-  });
-  window.addEventListener("appinstalled", () => { installBtn.hidden = true; installEvt = null; setStatus("Aplicación instalada ✔", 5000); });
-  installBtn.addEventListener("click", async () => {
-    if (!installEvt) return;
-    installEvt.prompt();
-    try { await installEvt.userChoice; } catch (e) { /* nada */ }
-    installEvt = null; installBtn.hidden = true;
-  });
-  // iPhone/iPad no ofrecen el botón automático: se muestra el cartel con los pasos.
-  if (/iPhone|iPad|iPod/i.test(navigator.userAgent) && !isStandalone()) {
-    installBtn.hidden = false;
-    installBtn.addEventListener("click", () => {
-      if (!installEvt) showMessage("Para instalarla en el iPhone:\n\n1. Abrí esta página en Safari.\n2. Tocá el botón Compartir (el cuadrado con la flecha hacia arriba).\n3. Elegí “Añadir a pantalla de inicio”.\n4. Tocá “Añadir”.");
-    });
-  }
-  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
-    navigator.serviceWorker.register("sw.js").catch((e) => console.warn("No se pudo registrar el service worker:", e));
-  }
 })();

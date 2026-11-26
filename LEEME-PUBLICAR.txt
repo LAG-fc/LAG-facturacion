@@ -1,5 +1,78 @@
-ESCÁNER DE REMITOS · LAG PANIFICADOS SRL — versión 8.8
-=======================================================
+FACTURACIÓN LAG · LAG PANIFICADOS SRL — versión 9.0
+====================================================
+
+NOVEDADES v9.0 · PÁGINA NUEVA: INICIO CON 3 BOTONES Y TODO EL FLUJO CONECTADO CON DRIVE
+- ⚠ PASOS OBLIGATORIOS (una sola vez, en este orden). Hasta hacerlos, la página nueva no puede leer Drive:
+  1. ACTUALIZAR EL PUENTE DE GOOGLE a la versión 5: seguí puente-google/INSTRUCCIONES-PUENTE.txt
+     (pegar el código nuevo, poner tu clave, tocar "Ejecutar" en "autorizar" y publicar una "Nueva versión").
+  2. PERMISO DE EDITOR en la planilla de Facturación (la hoja de cálculo de la carpeta Facturacion): pedile a quien te
+     la compartió que te ponga como "Editor". Sin eso el puente no puede agregar las filas de las facturas.
+  3. PUBLICAR LAS REGLAS NUEVAS DE FIRESTORE: Firebase > Firestore Database > Reglas > borrar todo > pegar el contenido
+     completo de firestore.rules > "Publicar". (Agrega el lugar donde se guarda el avance de cada OC.)
+  4. En cada dispositivo: Ajustes > "Probar conexión" tiene que decir "puente v5". En Ajustes > Envíos poné el número
+     de WhatsApp para las facturas de Grupo L.
+- AL ABRIR LA PÁGINA se leen solas las OC y los Excel de despachos de Drive (Compartido conmigo / Facturacion / <Mes> /
+  Cook Master y Grupo L) del mes anterior, el actual y el siguiente. Solo se bajan los archivos nuevos o que cambiaron.
+  Arriba a la derecha, el botón "Drive" muestra la hora de la última lectura; tocándolo se vuelve a leer.
+- INICIO: el avance del mes (porcentaje y barra), tres botones grandes —REMITOS, FACTURAS y ENVIAR MAILS— con la
+  cantidad de cosas pendientes en cada uno, y abajo TODAS las OC encontradas en Drive. Cada OC muestra sus períodos
+  (Cook Master: 1.ª y 2.ª quincena; Grupo L: cada semana de su Excel) con tres pasos de colores (gris = falta,
+  amarillo = listo para hacer, verde = hecho) y un botón con el paso siguiente (Escanear, Confirmar tabla, Facturar,
+  Enviar mail, WhatsApp).
+- REMITOS
+  · Arriba se elige la OC y el período de la lista de Drive (por ejemplo "OC 93032 · Penal · 16 al 30/11"). Para Cook
+    Master avisa cuántos remitos se esperan (uno por día: 15 o 16 por quincena) y cuántos llevás. Sigue existiendo
+    "Otra OC (escribirla a mano)".
+  · La tabla de recepciones ahora tiene un renglón por cada producto de la OC (en el orden del remito) y una columna
+    nueva, EXCEL, con lo que dice el Excel de despachos de ese período: en verde si coincide con el total de los
+    remitos, en rojo con la diferencia si no.
+  · El botón ahora es "CONFIRMAR Y GUARDAR EN DRIVE":
+      - Si la tabla coincide con el Excel: arma el PDF (remitos + tabla) y lo guarda solo en
+        Mi unidad / OC-<año> / <Cliente> / OC-<número> (por ejemplo OC-2026 / Cook Master / OC-93032), con el nombre
+        de siempre: REMITOS_<OC>_<desde>_al_<hasta>.pdf.
+      - Si NO coincide: la tabla escaneada no se confirma y se abre un cuadro para ingresar la TABLA DE DESPACHOS REAL
+        (viene completada con el Excel; se corrige lo que haga falta). El PDF se guarda con los remitos escaneados y
+        esa tabla ("TABLA DE RECEPCIONES (DESPACHOS REALES)").
+      - Si todavía no está el Excel del período (el de Cook Master llega a fin de mes), avisa y deja guardarlo igual.
+  · Ya no se crea el borrador de Gmail al guardar el PDF: los mails se mandan desde "Enviar mails".
+- FACTURAS
+  · A la izquierda (arriba en el celular) las OC y períodos pendientes de facturar; a la derecha la TABLA DE
+    FACTURACIÓN bien grande: descripción, cantidad, precio unitario e IVA de la OC, importe, subtotal, IVA y total.
+    Las cantidades salen de la tabla de recepciones confirmada (o de los despachos reales). Si todavía no se
+    confirmaron los remitos, se usan las del Excel y lo avisa. "Copiar tabla" la copia para Excel.
+  · Grupo L: la OC (formato SAP) se lee completa; no trae IVA, así que se usa 10,5 % (se puede cambiar).
+  · "Cargá la factura (PDF de ARCA)": la página lee tipo (A, FCE "eA", nota de crédito "NC FC13"…), número, fecha,
+    neto, IVA y total, y los controla contra la tabla de facturación (avisa si no coinciden).
+  · "Guardar factura": la guarda en la carpeta de la OC en Drive (con el número de OC en el nombre) y agrega una fila
+    nueva en la planilla de Facturación: Grupo L en la 1.ª hoja, Cook Master en la 2.ª, dentro del bloque del mes,
+    con fecha, N.º, tipo, razón social, descripción ("Cook Master OC 93032 (16 al 30/11) Penal" o
+    "Grupo L (sem 23 al 28/11)", editable), subtotal, IVA, final y estado DEBE. No borra ni cambia filas existentes.
+  · Cook Master: se elige «Portal» o «Mail» (uno solo).
+  · Grupo L: botón "Enviar por WhatsApp". En el iPhone abre la hoja para compartir con el PDF: elegís WhatsApp y el
+    contacto. En la computadora abre el chat y descarga el PDF para adjuntarlo. Al confirmar, en la planilla queda
+    "wpp" en la columna FC.
+- ENVIAR MAILS
+  · Tabla con el progreso de cada OC y período: remitos (PDF en Drive), tabla (coincide / despachos reales), factura,
+    canal y mail. En el celular se ve como tarjetas.
+  · Cook Master «Portal»: el mail lleva solo el PDF de los remitos. «Mail»: lleva los remitos y la factura.
+    Grupo L no lleva mail.
+  · Elegís los que están "Listos para enviar" y tocás "Enviar mails". Al terminar, en la planilla se completan
+    "REMITOS ENV" (si) y "FC (MAIL O PORTAL)" (portal o mail).
+  · Si preferís revisarlos antes: Ajustes > Envíos > "Dejarlos como borrador en Gmail".
+- El avance de cada OC (tabla confirmada, PDF, factura, canal, mail) se guarda en tu cuenta y se ve desde cualquier
+  dispositivo. Las fotos de los remitos se siguen borrando solas a los 15 días de guardado el PDF en Drive.
+- Las carpetas viejas (OC-2026 / NOVIEMBRE / OC-…) NO se tocan: la página también las mira para saber qué remitos y
+  facturas ya estaban.
+- PROBADO con tus archivos reales de Drive (sin modificar nada): la OC 91201 (Penal, 1 al 15/10) contra el Excel de
+  despachos de octubre da exactamente el total de la factura que ya estaba en la planilla; la semana del 16 al 21/11 de
+  Grupo L da exactamente el total de su factura; las facturas de ARCA (factura A, FCE y nota de crédito) se leen con los
+  mismos importes y tipos que están cargados a mano en la planilla.
+- ARCHIVOS NUEVOS: app.js, drive.js, unidades-store.js, grupol.js, flujo.js, facturas.js, mails.js, inicio.js,
+  puente-google/Codigo.gs, puente-google/INSTRUCCIONES-PUENTE.txt.
+- CAMBIARON: index.html, styles.css, scanner.js, lotes.js, lotes-store.js, pdftext.js, ocparse.js, factparse.js,
+  despachos.js, period.js, pdf.js, sw.js, firestore.rules, LEEME-PUBLICAR.txt.
+- SE BORRÓ: oc.js (lo reemplazan facturas.js e inicio.js).
+
 
 NOVEDADES v8.8 · OC ANTES DE ESCANEAR Y TABLA DE RECEPCIONES COMO UNA PLANILLA DE EXCEL
 - SE QUITÓ LA LECTURA AUTOMÁTICA DE CANTIDADES (Atajo «LAG Cantidades» del iPhone): solo leía la primera foto.

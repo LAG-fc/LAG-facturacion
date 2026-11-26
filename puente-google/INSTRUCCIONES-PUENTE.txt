@@ -1,0 +1,70 @@
+PUENTE DE GOOGLE · LAG PANIFICADOS SRL — versión 5 (para la página v9.0)
+=========================================================================
+
+QUÉ ES
+- Es un pequeño programa de Google (Apps Script) que hace de "puente" entre la página y tu cuenta de Google.
+  La página no puede entrar sola a Drive, a la planilla ni a Gmail: le pide las cosas al puente, con una clave.
+- Lo que hace la versión 5:
+  · Lee "Compartido conmigo / Facturacion / <Mes> / Cook Master" y ".../Grupo L": las OC (PDF) y los Excel de
+    despachos. Solo los LEE: nunca los cambia ni los borra.
+  · Guarda los PDF de remitos y las facturas en Mi unidad / OC-<año> / <Cliente> / OC-<número>
+    (por ejemplo: OC-2026 / Cook Master / OC-93032). Si la carpeta no existe, la crea. Nunca borra archivos:
+    si ya hay un PDF de remitos con el mismo nombre, el nuevo se guarda como "… (2).pdf".
+  · Agrega UNA fila nueva por factura en la planilla de Facturación (la hoja de cálculo de Google que está en la
+    carpeta Facturacion): Grupo L en la 1.ª hoja y Cook Master en la 2.ª hoja. La escribe dentro del
+    bloque del mes (en la primera fila libre antes de la fila del total, por ejemplo "NOVIEMBRE"), con el mismo formato
+    que las filas de arriba. Si ya no quedan filas libres, inserta una fila nueva solo en la tabla (columnas A a O, sin
+    mover la tabla de la derecha) y corrige la suma del total del mes. Nunca borra ni cambia filas que ya estaban.
+  · Después de mandar los mails completa en la fila de esa factura las columnas "REMITOS ENV" (si) y
+    "FC (MAIL O PORTAL)" (portal / mail / wpp).
+  · Manda los mails (o los deja como borrador) SOLO a cuentasapagar@cook-master.com.ar, con los PDF de Drive adjuntos.
+
+ANTES DE EMPEZAR (una sola vez)
+- La planilla de Facturación es de otra cuenta (te la compartieron). Para que el puente pueda agregar filas,
+  tu cuenta tiene que tener permiso de EDITOR. Pedile a quien la compartió que entre a la planilla > botón "Compartir"
+  > al lado de tu correo elija "Editor" > "Guardar". (Con permiso de "Lector" o "Comentarista" no se pueden agregar filas.)
+
+ACTUALIZAR EL PUENTE QUE YA TENÉS (unos 10 minutos)
+ 1. En la computadora, entrá a https://script.google.com con la cuenta de Google donde está Mi unidad con las carpetas
+    OC-2026 (la misma que usaste para el puente anterior).
+ 2. Abrí el proyecto del puente (el que ya tenías).
+ 3. A la izquierda tocá el archivo "Código.gs". Seleccioná todo el código (Ctrl+A) y borralo (Suprimir).
+ 4. En GitHub abrí el archivo puente-google/Codigo.gs > botón "Raw" (o el ícono "Copy raw file") > copiá todo
+    (Ctrl+A, Ctrl+C) y pegalo en "Código.gs" (Ctrl+V).
+ 5. Arriba de todo está la línea:
+        const CLAVE = "CAMBIAR";
+    Cambiá CAMBIAR por tu clave, la MISMA que tenías en el puente anterior (es la que está en la página, Ajustes >
+    Clave). Dejá las comillas. Ejemplo: const CLAVE = "panaderia-2026";
+ 6. Tocá el ícono del disquete (Guardar).
+ 7. Dar los permisos nuevos (Hojas de cálculo y Gmail):
+    · Arriba, al lado de "Depurar", elegí la función "autorizar" y tocá "Ejecutar".
+    · Aparece "Se necesita autorización" > "Revisar permisos" > elegí tu cuenta > "Configuración avanzada" >
+      "Ir a <nombre del proyecto> (no seguro)" > "Permitir". (Dice "no seguro" porque el programa es tuyo y no lo
+      revisó Google; es normal.)
+    · Abajo, en "Registro de ejecución", tiene que aparecer una línea que empieza con "OK · carpeta: Facturacion ·
+      planilla: Facturacion …". Si aparece un error, leelo: dice qué no encontró.
+ 8. Publicar la versión nueva SIN cambiar la dirección:
+    · Arriba a la derecha: "Implementar" > "Gestionar implementaciones".
+    · Elegí la implementación que ya tenías > ícono del lápiz (Editar) > en "Versión" elegí "Nueva versión" >
+      "Implementar" > "Listo".
+    · Así la dirección (la que termina en /exec) queda igual y no hace falta cambiarla en los dispositivos.
+ 9. En la página: Ajustes > "Probar conexión". Tiene que decir "Conexión correcta ✔ (puente v5, …)".
+    Si dice "el puente es de una versión anterior", repetí el paso 8 (seguramente faltó elegir "Nueva versión").
+
+CREAR EL PUENTE DESDE CERO (si no tenías uno)
+ 1. https://script.google.com > "Nuevo proyecto". Arriba a la izquierda cambiale el nombre a "Puente LAG".
+ 2. Hacé los pasos 3 a 7 de arriba. En el paso 5 inventá una clave (letras y números, sin espacios) y anotala.
+ 3. "Implementar" > "Nueva implementación" > ícono del engranaje > "Aplicación web".
+    · Descripción: Puente LAG · Ejecutar como: "Yo" · Quién tiene acceso: "Cualquier persona".
+    · "Implementar" > copiá la "URL de la aplicación web" (termina en /exec).
+ 4. En la página, en cada dispositivo: Ajustes > "Dirección del puente" (pegá la URL) y "Clave" > "Probar conexión" >
+    "Guardar ajustes".
+
+PREGUNTAS FRECUENTES
+- ¿Es seguro? El puente solo responde si la página le manda la clave correcta. Solo entrega archivos de la carpeta
+  Facturacion y de las carpetas OC-año; solo manda mails a la dirección de Cook Master de la lista; nunca borra nada.
+- ¿Quiero mandar los mails a otra dirección? En Código.gs buscá "destinatarios" y cambiá (o agregá, entre comillas y
+  separado por coma) el correo. Después hacé el paso 8.
+- ¿Se reordenan las hojas de la planilla? El puente usa la 1.ª hoja para Grupo L y la 2.ª para Cook Master. Si eso
+  cambia, en Código.gs, en "hojas", escribí entre las comillas de "nombre" el nombre exacto de cada hoja.
+- Prefiero revisar los mails antes de que salgan: en la página, Ajustes > Envíos > "Dejarlos como borrador en Gmail".
