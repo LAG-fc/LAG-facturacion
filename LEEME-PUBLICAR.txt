@@ -1,5 +1,16 @@
-FACTURACIÓN LAG · LAG PANIFICADOS SRL — versión 9.1
+FACTURACIÓN LAG · LAG PANIFICADOS SRL — versión 9.2
 ====================================================
+
+NOVEDADES v9.2 · GRUPO L PUEDE FACTURARSE SIN ESCANEAR LOS REMITOS
+- Grupo L no siempre pide los remitos. Ahora, en Facturas (y desde Inicio, botón «Sin remitos»), cada semana de
+  Grupo L tiene el botón «Facturar sin remitos». Con eso el paso Remitos queda como hecho y la factura se arma con
+  las cantidades del Excel de pedido semanal. Si te arrepentís, tocá «Volver a pedir los remitos».
+- Cook Master no cambia: sigue pidiendo remitos escaneados.
+- ⚠ OBLIGATORIO: volver a PUBLICAR LAS REGLAS DE FIREBASE (firestore.rules): pegar el archivo en la consola, como
+  en INSTRUCCIONES-USUARIOS.txt, paso 5. Sin eso, el botón funciona en el dispositivo pero no se sincroniza.
+- No hace falta tocar el puente de Google (sigue en v6).
+- Archivos CAMBIADOS: app.js, flujo.js, facturas.js, inicio.js, unidades-store.js, firestore.rules, index.html,
+  sw.js, LEEME-PUBLICAR.txt. No hay archivos nuevos.
 
 NOVEDADES v9.1 · CARPETAS POR PERÍODO Y SOLO LO QUE TOCA FACTURAR HOY
 - ⚠ OBLIGATORIO: ACTUALIZAR EL PUENTE DE GOOGLE a la versión 6 (puente-google/Codigo.gs). Son los mismos pasos de

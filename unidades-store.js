@@ -8,7 +8,7 @@
   "use strict";
   const FB = () => root.LAGFirebase;
   const KEY = "unidades";
-  const FIELDS = ["cliente", "oc", "periodo", "lote", "confirmacion", "tablaReal", "despachos", "remitos", "pdf", "factura", "envio", "planilla", "mail", "wpp", "creado", "actualizado"];
+  const FIELDS = ["cliente", "oc", "periodo", "lote", "confirmacion", "tablaReal", "despachos", "remitos", "pdf", "factura", "envio", "planilla", "mail", "wpp", "sinRemitos", "creado", "actualizado"];
   const cloud = () => (root.LAGAuth && root.LAGAuth.cloud ? root.LAGAuth.cloud() : null);
   const listeners = new Set();
   const emit = () => listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });

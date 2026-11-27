@@ -76,6 +76,10 @@
     // encabezado
     h += '<section class="card fm-head"><h2>' + esc(F.CLIENTES[u.cliente].nombre) + " · <b>OC " + esc(oc.numero) + "</b>" + '<br><small class="hint">' + esc((u.cliente === "cookmaster" ? F.sedeNombre(oc) + " · " : "") + "Período " + P.dateRange(u.periodo) + " (" + (u.periodo.label || "") + ")") + "</small></h2>" +
       '<div class="steps">' + u.progreso.pasos.map((p) => '<span class="step ' + p.estado + '">' + esc(p.label + ": " + p.texto) + "</span>").join("") + "</div></section>";
+    if (u.cliente === "grupol" && !(e.pdf && e.pdf.id) && !e.factura) {
+      h += '<section class="card"><p class="hint">' + (e.sinRemitos ? "Este período se factura <b>sin remitos</b>: las cantidades salen del Excel de pedido semanal." : "Grupo L no siempre pide los remitos. Si esta semana no hace falta escanearlos, podés facturar igual con las cantidades del Excel.") + "</p>" +
+        '<div class="row-btns"><button type="button" class="btn ' + (e.sinRemitos ? "ghost" : "soft") + '" id="sinRem">' + (e.sinRemitos ? "Volver a pedir los remitos" : "Facturar sin remitos") + "</button></div></section>";
+    }
     // tabla de facturación
     h += '<section class="card bill-card"><div class="bill-tools"><h3>' + ICON("receipt") + "Tabla de facturación</h3>" +
       '<button type="button" class="btn soft small" id="billCopy"' + (bill.lines.length ? "" : " disabled") + ">" + ICON("copy") + "Copiar tabla</button></div>" +
@@ -204,6 +208,7 @@
       pending = null; mainEl.querySelector("#invCard").innerHTML = invoiceHtml(Object.assign({}, u, { estado: Object.assign({}, u.estado, { factura: null }) }), bill); wire(Object.assign({}, u, { estado: Object.assign({}, u.estado, { factura: null }) }), bill);
     });
     const retry = $("invRowRetry"); if (retry) retry.addEventListener("click", () => addRow(u, u.estado.factura));
+    const sr = $("sinRem"); if (sr) sr.addEventListener("click", async () => { await U.update(u.key, { sinRemitos: !(u.estado && u.estado.sinRemitos) }); });
     const wpp = $("wppBtn"); if (wpp) wpp.addEventListener("click", () => sendWhatsApp(u));
     const mark = $("wppMark"); if (mark) mark.addEventListener("click", () => markWpp(u));
   }

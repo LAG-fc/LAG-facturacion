@@ -2,7 +2,7 @@
 // (Remitos, Facturas, Enviar mails), avisos y preguntas, y un canal de eventos para que los módulos se avisen cambios.
 (() => {
   "use strict";
-  const APP_VERSION = "9.1";
+  const APP_VERSION = "9.2";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 

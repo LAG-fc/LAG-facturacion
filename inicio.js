@@ -12,6 +12,7 @@
   function nextAction(u) {
     const p = u.progreso, s = p.siguiente;
     if (!s) return '<span class="chip ok">Completo ✔</span>';
+    if (s === "remitos" && u.cliente === "grupol" && !u.lote) return '<button type="button" class="btn soft next-btn" data-go="remitos" data-unit="' + esc(u.key) + '">Escanear</button> <button type="button" class="btn ghost next-btn" data-go="facturas" data-unit="' + esc(u.key) + '">Sin remitos</button>';
     if (s === "remitos") return u.lote
       ? '<button type="button" class="btn soft next-btn" data-lote="' + esc(u.lote.id) + '">Confirmar tabla</button>'
       : '<button type="button" class="btn soft next-btn" data-go="remitos" data-unit="' + esc(u.key) + '">Escanear</button>';

@@ -244,9 +244,10 @@
   function progress(unit) {
     const l = unit.lote, f = unit.estado || {}, gl = unit.cliente === "grupol";
     const pasos = [];
-    const pdfOk = !!(f.pdf && f.pdf.id) || !!unit.pdfEnDrive;
+    const sinRem = gl && !!f.sinRemitos && !(f.pdf && f.pdf.id); // Grupo L: período facturado sin escanear remitos
+    const pdfOk = !!(f.pdf && f.pdf.id) || !!unit.pdfEnDrive || sinRem;
     pasos.push({ id: "remitos", label: "Remitos", estado: pdfOk ? "hecho" : l ? "listo" : "falta",
-      texto: pdfOk ? "PDF en Drive" + (f.confirmacion === "real" ? " (con despachos reales)" : f.confirmacion === "sin-excel" ? " (sin Excel para comparar)" : "") : l ? "Escaneados: falta confirmar la tabla" : unit.started ? "Faltan escanear" : "Período sin empezar" });
+      texto: sinRem ? "Sin remitos (se factura con el Excel)" : pdfOk ? "PDF en Drive" + (f.confirmacion === "real" ? " (con despachos reales)" : f.confirmacion === "sin-excel" ? " (sin Excel para comparar)" : "") : l ? "Escaneados: falta confirmar la tabla" : unit.started ? "Faltan escanear" : "Período sin empezar" });
     const fac = f.factura;
     pasos.push({ id: "factura", label: "Factura", estado: fac ? "hecho" : pdfOk ? "listo" : "falta",
       texto: fac ? "N.º " + (fac.nro || fac.numero) + " · $ " + O.fmtMoney(fac.total) + (f.planilla && f.planilla.fila ? " · en la planilla" : "") : pdfOk ? "Lista para facturar" : "Falta" });
